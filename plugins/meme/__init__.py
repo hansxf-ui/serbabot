@@ -262,21 +262,25 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Kirim balik stikernya ke chat: user langsung lihat hasilnya detik itu
-    # juga (real-time) dan bisa mengetuknya untuk buka pack-nya. Tanpa ini,
-    # user dipaksa buka-tutup aplikasi karena preview link t.me di-cache
-    # server Telegram dan tidak refresh saat stiker ditambahkan.
-    # Tombol "Tambah ke Stikerku" selalu disertakan biar aksi nambahin
-    # pack-nya jelas dan satu ketuk, tidak tergantung mengetuk stiker.
+    # juga (real-time) dan bisa mengetuknya untuk buka pack-nya.
+    # Catatan perilaku resmi aplikasi Telegram (dari source client-nya):
+    # pack yang dibuka LEWAT LINK/tombol HANYA menampilkan tombol
+    # "TAMBAH X STIKER" kalau pack-nya BELUM terpasang di panel user.
+    # Kalau pack-nya sudah terpasang + user adalah pemiliknya, yang muncul
+    # adalah "Edit Stiker". Jadi label tombol di bawah ini sengaja NETRAL
+    # ("Buka Pack Stikerku") — bukan "Tambah" — supaya tidak memberi
+    # ekspektasi palsu ada tombol tambah untuk pemilik pack.
     add_url = "https://t.me/addstickers/%s" % set_name
     kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("➕ Tambah ke Stikerku", url=add_url)]]
+        [[InlineKeyboardButton("📦 Buka Pack Stikerku", url=add_url)]]
     )
     sticker_png.seek(0)
     await update.message.reply_sticker(sticker=sticker_png)
 
     if row:
         await update.message.reply_text(
-            "Nambah 1 stiker ke pack lu ✓",
+            "Nambah 1 stiker ke pack lu ✓\n"
+            "Buka panel stiker (ikon stiker di kolom chat) → cari \"Stiker NL\".",
             reply_markup=kb,
         )
     else:
