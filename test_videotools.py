@@ -203,6 +203,7 @@ print("== handler video_in (mock penuh) ==")
 toolsmod.is_in_session = lambda uid: False
 toolsmod.upsert_user = lambda *a: None
 toolsmod.is_premium = lambda c, u: False
+toolsmod.is_vip = lambda c, u, a=None: False
 toolsmod.quota_ok = lambda c, u: True
 toolsmod.inc_downloads_today = lambda *a: None
 
