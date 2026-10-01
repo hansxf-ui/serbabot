@@ -46,6 +46,7 @@ BOT_TOKEN=xxxx_dari_BotFather
 ADMIN_ID=123456789
 REPLICATE_API_TOKEN=r8_xxxxxxxxxxxxxxxx
 YTDL_COOKIES=/opt/serbabot/cookies.txt
+GEMINI_API_KEY=xxxx_dari_aistudio
 ```
 
 `REPLICATE_API_TOKEN` = buat hapus background yang cepat (~4 detik, GPU).
@@ -58,6 +59,11 @@ Instagram biar nggak kena blokir bot. Cara isi: buka youtube.com di browser
 HP (Lemur Browser), export cookies pakai ekstensi "Get cookies.txt LOCALLY",
 lalu upload file-nya ke VPS. Kalau dikosongkan, downloader tetap jalan tapi
 kadang gagal.
+
+`GEMINI_API_KEY` = bikin `/ai` jawab akurat (tanpa ini, `/ai` pakai
+Pollinations gratis yang kadang ngawur). Ambil gratis di
+https://aistudio.google.com/apikey (kuota gratis 1500x/hari, tanpa kartu
+kredit). Kalau dikosongkan, `/ai` tetap jalan tapi jawabannya bisa ngaco.
 
 Simpan: `Ctrl+O`, `Enter`, `Ctrl+X`. Lalu kunci permission-nya:
 
