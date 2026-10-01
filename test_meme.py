@@ -207,57 +207,26 @@ st2 = meme.photo_to_sticker(_test_photo(100, 50)).getvalue()
 ims2 = Image.open(io.BytesIO(st2))
 _t("stiker kecil 100x50 -> upscale 512x256", ims2.size == (512, 256))
 
-# 8. /stiker flow: pertama create set, kedua add ke set
+# 8. /stiker flow (simpel, tanpa pack): stiker dikirim, pesan sukses
 conn = db.init_db(":memory:")
 bot = FakeBot()
 ctx8 = FakeContext(conn, bot=bot)
 u1 = FakeUpdate(777, photo)
 asyncio.run(meme.stiker_cmd(u1, ctx8))
-_t("/stiker pertama: create_new_sticker_set dipanggil",
-   len(bot.calls) == 1 and bot.calls[0][0] == "create")
-_t("/stiker pertama: nama set serba_777_by_testbot",
-   bot.calls[0][2] == "serba_777_by_testbot")
-_t("/stiker pertama: emoji default 🙂",
-   list(bot.calls[0][4][0].emoji_list) == ["🙂"])
-row = conn.execute("SELECT set_name FROM meme_sets WHERE user_id=777").fetchone()
-_t("/stiker pertama: set tercatat di DB", row and row[0] == "serba_777_by_testbot")
-_t("/stiker pertama: pesan sukses",
-   any("Pack stiker lu jadi" in r for r in u1.message.replies))
-
-
-def _tambah_button(kws, setname):
-    for kw in kws:
-        kb = kw.get("reply_markup")
-        if kb:
-            for rowb in kb.inline_keyboard:
-                for b in rowb:
-                    if b.url and ("t.me/addstickers/" + setname) in b.url:
-                        return True
-    return False
-
-
-_t("/stiker pertama: tombol Tambah ke Stikerku ada",
-   _tambah_button(u1.message.reply_kws, "serba_777_by_testbot"))
-_t("/stiker pertama: stiker dikirim balik ke chat (real-time)",
+_t("/stiker pertama: tidak panggil API set (tanpa pack)",
+   bot.calls == [])
+_t("/stiker pertama: stiker dikirim ke chat",
    len(u1.message.stickers) == 1)
 _stback = Image.open(io.BytesIO(u1.message.stickers[0]))
 _t("/stiker pertama: stiker di chat PNG 512 valid",
    max(_stback.size) == 512 and _stback.format == "PNG")
-# stiker yang dikirim = PNG max 512 (InputSticker bungkus BytesIO di InputFile)
-_raw = bot.calls[0][4][0].sticker.input_file_content
-stimg = Image.open(io.BytesIO(_raw))
-_t("/stiker pertama: PNG sisi terpanjang 512",
-   max(stimg.size) == 512 and stimg.format == "PNG")
+_t("/stiker pertama: pesan sukses",
+   any("Stiker jadi" in r for r in u1.message.replies))
 
 u2 = FakeUpdate(777, photo)
 asyncio.run(meme.stiker_cmd(u2, ctx8))
-_t("/stiker kedua: add_sticker_to_set (bukan create lagi)",
-   len(bot.calls) == 2 and bot.calls[1][0] == "add"
-   and bot.calls[1][2] == "serba_777_by_testbot")
-_t("/stiker kedua: stiker dikirim balik ke chat",
+_t("/stiker kedua: stiker dikirim ke chat",
    len(u2.message.stickers) == 1)
-_t("/stiker kedua: tidak kirim link lagi",
-   not any("addstickers" in r for r in u2.message.replies))
 _t("/stiker: jatah kepotong 2", db.get_quota_today(conn, "stiker", 777) == 2)
 
 # 9. /stiker tanpa reply foto -> cara pakai
@@ -283,9 +252,7 @@ conn = db.init_db(":memory:")
 bot11 = FakeBot()
 u11 = FakeUpdate(444, own_photo_data=photo)
 asyncio.run(meme.stiker_cmd(u11, FakeContext(conn, bot=bot11)))
-_t("/stiker caption: create_new_sticker_set dipanggil",
-   len(bot11.calls) == 1 and bot11.calls[0][0] == "create")
-_t("/stiker caption: stiker dikirim balik ke chat",
+_t("/stiker caption: stiker dikirim ke chat",
    len(u11.message.stickers) == 1)
 _t("/stiker caption: jatah kepotong 1",
    db.get_quota_today(conn, "stiker", 444) == 1)
@@ -302,21 +269,18 @@ conn = db.init_db(":memory:")
 bot13 = FakeBot()
 u13 = FakeUpdate(666, photo_data=photo, own_photo_data=_test_photo(100, 50))
 asyncio.run(meme.stiker_cmd(u13, FakeContext(conn, bot=bot13)))
-_raw13 = bot13.calls[0][4][0].sticker.input_file_content
 _t("/stiker: foto reply yang dipakai (bukan caption)",
-   Image.open(io.BytesIO(_raw13)).size == (512, 384))
+   Image.open(io.BytesIO(u13.message.stickers[0])).size == (512, 384))
 
 # 14. caption router: foto + caption /stiker -> jalan (ini yang kemarin mati)
 conn = db.init_db(":memory:")
 bot14 = FakeBot()
 u14 = FakeUpdate(1010, own_photo_data=photo, caption="/stiker")
 asyncio.run(meme._caption_router(u14, FakeContext(conn, bot=bot14)))
-_t("caption /stiker: create_new_sticker_set dipanggil",
-   len(bot14.calls) == 1 and bot14.calls[0][0] == "create")
-_t("caption /stiker: stiker dikirim balik ke chat",
+_t("caption /stiker: tidak panggil API set",
+   bot14.calls == [])
+_t("caption /stiker: stiker dikirim ke chat",
    len(u14.message.stickers) == 1)
-_t("caption /stiker: tombol tambah ada",
-   _tambah_button(u14.message.reply_kws, "serba_1010_by_testbot"))
 _t("caption /stiker: jatah kepotong 1",
    db.get_quota_today(conn, "stiker", 1010) == 1)
 
@@ -342,35 +306,7 @@ conn = db.init_db(":memory:")
 bot17 = FakeBot()
 u17 = FakeUpdate(4040, own_photo_data=photo, caption="/stiker@testbot")
 asyncio.run(meme._caption_router(u17, FakeContext(conn, bot=bot17)))
-_t("caption /stiker@bot: create dipanggil", len(bot17.calls) == 1)
-
-# 18. /cekpack: lapor isi pack dari server (khusus admin)
-conn = db.init_db(":memory:")
-bot18 = FakeBot()
-u18 = FakeUpdate(1, own_photo_data=photo)  # id 1 = admin
-ctx18 = FakeContext(conn, bot=bot18, admin_id=1)
-asyncio.run(meme.stiker_cmd(u18, ctx18))
-u18.message.replies.clear()
-asyncio.run(meme.cekpack_cmd(u18, ctx18))
-_t("/cekpack: lapor 8 stiker dari server",
-   any("Isi di server: 8 stiker" in r for r in u18.message.replies))
-
-# 19. /cekpack: non-admin ditolak
-conn = db.init_db(":memory:")
-u19 = FakeUpdate(999, own_photo_data=photo)
-asyncio.run(meme.stiker_cmd(u19, FakeContext(conn, bot=FakeBot())))
-u19.message.replies.clear()
-asyncio.run(meme.cekpack_cmd(u19, FakeContext(conn, bot=FakeBot())))
-_t("/cekpack: non-admin ditolak",
-   any("Khusus admin" in r for r in u19.message.replies))
-
-# 20. /stiker: judul pack "disentuh" biar client refresh
-conn = db.init_db(":memory:")
-bot20 = FakeBot()
-u20 = FakeUpdate(7, own_photo_data=photo)
-asyncio.run(meme.stiker_cmd(u20, FakeContext(conn, bot=bot20)))
-_t("/stiker: judul disentuh (set_sticker_set_title dipanggil)",
-   getattr(bot20, "title_touched", None) is not None)
+_t("caption /stiker@bot: stiker dikirim", len(u17.message.stickers) == 1)
 
 print("MEME " + ("OK" if not fails else "GAGAL: %s" % fails))
 sys.exit(1 if fails else 0)
