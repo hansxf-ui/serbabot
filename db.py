@@ -64,6 +64,11 @@ def is_premium(conn, user_id):
     return bool(row and row[0])
 
 
+def is_vip(conn, user_id, admin_id):
+    """Admin & user premium bebas jatah harian. admin_id boleh None."""
+    return bool(admin_id and user_id == admin_id) or is_premium(conn, user_id)
+
+
 def get_downloads_today(conn, user_id, date=None):
     date = date or _today()
     row = conn.execute(
