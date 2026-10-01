@@ -28,8 +28,9 @@ python3 -m venv venv
 > gabung video+audio kualitas tertinggi. Install kalau mau:
 > `sudo apt install -y ffmpeg`
 >
-> Catatan `rembg`: saat fitur hapus background pertama dipakai, model AI
-> ~176MB diunduh otomatis (butuh internet, agak lama). Proses di CPU.
+> Catatan `rembg`: dipakai sebagai fallback kalau API mati. Model AI ~176MB
+> diunduh otomatis saat pertama dipakai (butuh internet, agak lama).
+> Proses di CPU.
 
 ## 2. Isi token & admin ID
 
@@ -42,7 +43,13 @@ Isi file-nya (ganti dengan punyamu):
 ```
 BOT_TOKEN=xxxx_dari_BotFather
 ADMIN_ID=123456789
+REPLICATE_API_TOKEN=r8_xxxxxxxxxxxxxxxx
 ```
+
+`REPLICATE_API_TOKEN` = buat hapus background yang cepat (~4 detik, GPU).
+Daftar gratis di https://replicate.com (dapat $25 kredit, tanpa kartu kredit),
+lalu ambil token di https://replicate.com/account/api-tokens.
+Kalau dikosongkan, bot pakai rembg lokal (gratis tapi lambat, hitungan menit).
 
 Simpan: `Ctrl+O`, `Enter`, `Ctrl+X`. Lalu kunci permission-nya:
 
