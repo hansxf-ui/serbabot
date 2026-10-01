@@ -11,7 +11,10 @@ import asyncio
 import logging
 import os
 import re
+import shutil
 import tempfile
+import urllib.parse
+import urllib.request
 
 from telegram import Update
 from telegram.ext import (
@@ -83,6 +86,35 @@ def _fetch(url):
     return path
 
 
+def _is_tiktok(url):
+    return "tiktok.com" in url.lower()
+
+
+def _fetch_tiktok_api(url):
+    """Fallback tanpa login untuk TikTok via API publik tikwm (urllib stdlib,
+    tanpa API key). Dipakai kalau yt-dlp diblokir IP server. Return path file."""
+    api = "https://www.tikwm.com/api/?url=" + urllib.parse.quote(url, safe="")
+    req = urllib.request.Request(api, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        import json
+        data = json.load(r)
+    if data.get("code") != 0:
+        raise RuntimeError("tikwm: %s" % data.get("msg", "unknown"))
+    d = data.get("data") or {}
+    video_url = d.get("play") or d.get("wmplay") or d.get("hdplay")
+    if not video_url:
+        raise RuntimeError("tikwm: tidak ada URL video di respons")
+    tmpdir = tempfile.mkdtemp(prefix="serbadl_")
+    path = os.path.join(tmpdir, "tiktok-%s.mp4" % d.get("id", "video"))
+    req = urllib.request.Request(
+        video_url,
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.tikwm.com/"},
+    )
+    with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as f:
+        shutil.copyfileobj(r, f)
+    return path
+
+
 async def _download_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, url):
     user = update.effective_user
     conn = context.bot_data["db"]
@@ -101,10 +133,22 @@ async def _download_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, url
         path = await asyncio.to_thread(_fetch, url)
     except Exception as e:  # noqa: BLE001 - link mati/unsupported harus jadi pesan ramah
         log.warning("download gagal (%s): %s", url, e)
-        await status.edit_text(
-            "Gagal download. Link-nya salah/kedaluwarsa, atau situsnya nggak didukung."
-        )
-        return
+        if _is_tiktok(url):
+            # TikTok memblokir IP datacenter -> coba jalur API tanpa login
+            await status.edit_text("Coba jalur lain... ⏳")
+            try:
+                path = await asyncio.to_thread(_fetch_tiktok_api, url)
+            except Exception as e2:
+                log.warning("fallback tikwm gagal (%s): %s", url, e2)
+                await status.edit_text(
+                    "Gagal download. Link-nya salah/kedaluwarsa, atau TikTok lagi ketat."
+                )
+                return
+        else:
+            await status.edit_text(
+                "Gagal download. Link-nya salah/kedaluwarsa, atau situsnya nggak didukung."
+            )
+            return
 
     try:
         if os.path.getsize(path) > MAX_BYTES:
