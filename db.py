@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS reports (
     message_text TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS downloads (
+    user_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, date)
+);
 """
 
 
@@ -43,5 +49,34 @@ def add_report(conn, reporter_id, reported_id, message_text):
         "INSERT INTO reports(reporter_id, reported_id, message_text, created_at)"
         " VALUES(?,?,?,?)",
         (reporter_id, reported_id, message_text, _now()),
+    )
+    conn.commit()
+
+
+def _today():
+    return time.strftime("%Y-%m-%d")
+
+
+def is_premium(conn, user_id):
+    row = conn.execute(
+        "SELECT is_premium FROM users WHERE user_id=?", (user_id,)
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def get_downloads_today(conn, user_id, date=None):
+    date = date or _today()
+    row = conn.execute(
+        "SELECT count FROM downloads WHERE user_id=? AND date=?", (user_id, date)
+    ).fetchone()
+    return row[0] if row else 0
+
+
+def inc_downloads_today(conn, user_id, date=None):
+    date = date or _today()
+    conn.execute(
+        "INSERT INTO downloads(user_id, date, count) VALUES(?,?,1) "
+        "ON CONFLICT(user_id, date) DO UPDATE SET count=count+1",
+        (user_id, date),
     )
     conn.commit()
