@@ -1,8 +1,8 @@
-"""Plugin downloader: download video TikTok via yt-dlp / API tikwm.
+"""Plugin downloader: download video TikTok (via API tikwm), YouTube &
+Instagram (via yt-dlp).
 
-YouTube, Instagram, X, Facebook DIPARKIR: IP server diblokir (YT) atau
-download-nya gacha tanpa login (FB/IG/X). Link situs itu dibalas pesan
-jelas, bukan dicoba download.
+Facebook & X DIPARKIR: download-nya gacha/gantung dari IP server.
+Link situs itu dibalas pesan jelas, bukan dicoba download.
 
 Freemium: user gratis = 5 pemakaian/hari (jatah gabung dengan plugin tools),
 premium = unlimited.
@@ -68,11 +68,12 @@ def _fetch(url):
         "no_warnings": True,
         "noplaylist": True,
     }
-    # Cookies dari sesi login asli (format Netscape) bikin YouTube nganggep
-    # request dari server sebagai user beneran, bukan robot. Taruh di
-    # /opt/serbabot/cookies.txt atau set env SERBABOT_COOKIES ke path lain.
-    cookie_file = os.environ.get("SERBABOT_COOKIES", "/opt/serbabot/cookies.txt")
-    if os.path.exists(cookie_file):
+    # Cookies dari sesi login asli (format Netscape, export dari browser HP)
+    # bikin YouTube/Instagram nganggep request dari server sebagai user
+    # beneran, bukan robot. Set env YTDL_COOKIES ke path file cookies.txt.
+    # Kalau env tidak di-set, yt-dlp jalan tanpa cookies seperti biasa.
+    cookie_file = os.environ.get("YTDL_COOKIES", "")
+    if cookie_file and os.path.exists(cookie_file):
         base_opts["cookiefile"] = cookie_file
 
     def _run(extra_args):
@@ -112,9 +113,8 @@ def _is_tiktok(url):
 
 
 # Situs yang diparkir: dicoba pun gagal/gantung dari IP server.
+# YouTube & Instagram SUDAH dibuka lagi (yt-dlp normal).
 PARKED_DOMAINS = (
-    "youtube.com", "youtu.be",          # IP diblokir YouTube
-    "instagram.com",                    # butuh login, gacha
     "facebook.com", "fb.watch",         # butuh login, gacha
     "x.com", "twitter.com",             # belum stabil
 )
@@ -159,7 +159,7 @@ async def _download_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, url
     if _is_parked(url):
         # Situs diparkir: jangan buang waktu & jatah user.
         await update.message.reply_text(
-            "Situs itu lagi diparkir 🙏 Yang jalan sekarang: TikTok aja."
+            "Situs itu lagi diparkir 🙏 Yang jalan sekarang: TikTok, YouTube, Instagram."
         )
         return
 
