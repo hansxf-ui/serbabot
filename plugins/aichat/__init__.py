@@ -20,7 +20,7 @@ from telegram.ext import (
 from db import (
     get_downloads_today,
     inc_downloads_today,
-    is_premium,
+    is_vip,
     upsert_user,
 )
 
@@ -62,7 +62,7 @@ async def ai_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     conn = context.bot_data["db"]
     upsert_user(conn, user.id, user.username)
-    premium = is_premium(conn, user.id)
+    premium = is_vip(conn, user.id, context.bot_data.get("admin_id"))
 
     question = " ".join(context.args).strip()
     if not question:
