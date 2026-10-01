@@ -1,6 +1,8 @@
 """Plugin downloader: download video dari link via yt-dlp.
 
-Dukung: TikTok, Instagram Reels, YouTube, X, Facebook (yt-dlp yang urus).
+Dukung: TikTok, Instagram Reels, X, Facebook (yt-dlp yang urus).
+YouTube DIPARKIR sementara: IP server (datacenter) diblokir YouTube,
+jadi link YouTube dibalas pesan jelas, bukan dicoba download.
 
 Freemium: user gratis = 5 download/hari, premium = unlimited.
 Tidak mengganggu sesi anonchat: URL yang dikirim saat sesi aktif tetap
@@ -107,6 +109,11 @@ def _is_tiktok(url):
     return "tiktok.com" in url.lower()
 
 
+def _is_youtube(url):
+    u = url.lower()
+    return "youtube.com" in u or "youtu.be" in u
+
+
 def _fetch_tiktok_api(url):
     """Fallback tanpa login untuk TikTok via API publik tikwm (urllib stdlib,
     tanpa API key). Dipakai kalau yt-dlp diblokir IP server. Return path file."""
@@ -137,6 +144,14 @@ async def _download_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, url
     conn = context.bot_data["db"]
     upsert_user(conn, user.id, user.username)
     premium = is_premium(conn, user.id)
+
+    if _is_youtube(url):
+        # YouTube diparkir: IP server diblokir, jangan buang waktu/quota.
+        await update.message.reply_text(
+            "Download YouTube lagi nggak bisa untuk sementara 🙏 "
+            "Servernya diblokir sama YouTube. Yang jalan: TikTok, Instagram, X, Facebook."
+        )
+        return
 
     if not premium and not quota_ok(conn, user.id):
         await update.message.reply_text(
