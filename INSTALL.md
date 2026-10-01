@@ -22,6 +22,11 @@ python3 -m venv venv
 > Ubuntu 24.04 melarang `pip install` global (PEP 668). Makanya pakai venv
 > seperti di atas — jangan pakai `sudo pip`.
 
+> `requirements.txt` sudah mencakup `yt-dlp` (buat plugin downloader).
+> `ffmpeg` opsional tapi disarankan — tanpa ffmpeg, yt-dlp kadang nggak bisa
+> gabung video+audio kualitas tertinggi. Install kalau mau:
+> `sudo apt install -y ffmpeg`
+
 ## 2. Isi token & admin ID
 
 ```bash
