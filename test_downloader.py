@@ -160,15 +160,19 @@ finally:
     dlmod.yt_dlp.YoutubeDL = orig_ydl
     __import__("os").path.exists = orig_exists
 
-# --- youtube diparkir: dibalas pesan jelas, tidak di-download, tidak makan jatah ---
-print("== youtube parked ==")
+# --- situs diparkir: dibalas pesan jelas, tidak di-download, tidak makan jatah ---
+print("== parked ==")
 import asyncio
 import plugins.downloader as dlmod3
-from plugins.downloader import _is_youtube
+from plugins.downloader import _is_parked, _is_tiktok
 
-_t("youtube.com kedeteksi", _is_youtube("https://www.youtube.com/watch?v=abc"))
-_t("youtu.be kedeteksi", _is_youtube("https://youtu.be/abc"))
-_t("tiktok bukan youtube", not _is_youtube("https://www.tiktok.com/@a/video/123"))
+_t("youtube.com diparkir", _is_parked("https://www.youtube.com/watch?v=abc"))
+_t("youtu.be diparkir", _is_parked("https://youtu.be/abc"))
+_t("instagram diparkir", _is_parked("https://www.instagram.com/reel/abc/"))
+_t("facebook diparkir", _is_parked("https://www.facebook.com/share/r/abc/"))
+_t("x diparkir", _is_parked("https://x.com/user/status/123"))
+_t("tiktok TIDAK diparkir", not _is_parked("https://www.tiktok.com/@a/video/123"))
+_t("tiktok kedeteksi", _is_tiktok("https://www.tiktok.com/@a/video/123"))
 
 fetch_calls = []
 class FakeYDL3:
@@ -186,9 +190,14 @@ class FakeYDL3:
 class _Msg:
     def __init__(self):
         self.texts = []
+        self.edited = []
     async def reply_text(self, t):
         self.texts.append(t)
         return self
+    async def edit_text(self, t):
+        self.edited.append(t)
+    async def delete(self):
+        pass
 
 class _Upd:
     def __init__(self):
@@ -209,8 +218,8 @@ try:
     u = _Upd()
     asyncio.run(dlmod3._download_flow(u, _Ctx(), "https://youtu.be/abc123"))
     _t("yt-dlp tidak dipanggil", fetch_calls == [])
-    _t("dibalas pesan parkir", any("YouTube" in t and "sementara" in t for t in u.message.texts))
-    # link non-youtube tetap jalan normal (yt-dlp dipanggil)
+    _t("dibalas pesan parkir", any("diparkir" in t for t in u.message.texts))
+    # link non-parkir tetap jalan normal (yt-dlp dipanggil)
     fetch_calls.clear()
     orig_exists3 = __import__("os").path.exists
     __import__("os").path.exists = lambda p: True
@@ -228,3 +237,25 @@ finally:
     dlmod3.is_premium = orig_premium
     dlmod3.quota_ok = orig_quota
     dlmod3.yt_dlp.YoutubeDL = orig_ydl
+
+# --- timeout: _fetch yang gantung -> user dapat pesan, bukan digantung ---
+print("== timeout ==")
+import time as _time
+orig_fetch3 = dlmod3._fetch
+orig_timeout = dlmod3.FETCH_TIMEOUT
+dlmod3.upsert_user = lambda *a: None
+dlmod3.is_premium = lambda *a: False
+dlmod3.quota_ok = lambda *a: True
+dlmod3._fetch = lambda url: _time.sleep(5)
+dlmod3.FETCH_TIMEOUT = 0.2
+try:
+    u3 = _Upd()
+    asyncio.run(dlmod3._download_flow(u3, _Ctx(), "https://www.tiktok.com/@a/video/123"))
+    _t("timeout dibalas pesan", any("Kelamaan" in t for t in u3.message.edited))
+    print("TIMEOUT OK")
+finally:
+    dlmod3._fetch = orig_fetch3
+    dlmod3.FETCH_TIMEOUT = orig_timeout
+    dlmod3.upsert_user = orig_upsert
+    dlmod3.is_premium = orig_premium
+    dlmod3.quota_ok = orig_quota
