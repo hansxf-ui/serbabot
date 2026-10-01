@@ -1,2 +1,4 @@
 python-telegram-bot[job-queue]>=21
 yt-dlp
+pillow
+rembg  # buat tools hapus background; model ~176MB diunduh saat pertama dipakai
