@@ -99,6 +99,14 @@ def img_rmbg(src, dst):
         out.save(dst, "PNG")
 
 
+def _rmbg_job(src, dst):
+    """Jalan di thread: import malas + inference. Import-nya berat
+    (onnxruntime dkk, 10-30 detik) jadi JANGAN di event loop."""
+    if _get_rembg() is None:
+        raise RuntimeError("REM_BG_OFF")
+    img_rmbg(src, dst)
+
+
 # ---------- handlers ----------
 
 async def tools_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -163,12 +171,6 @@ async def photo_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Upgrade ke Premium biar unlimited: /premium"
         )
         return
-    if action == "rmbg" and _get_rembg() is None:
-        await update.message.reply_text(
-            "Hapus background belum aktif di server ini 🙏 Coba tools lain dulu."
-        )
-        context.user_data.pop("pending_tool", None)
-        return
 
     status = await update.message.reply_text("Lagi diproses... ⏳")
     tmpdir = tempfile.mkdtemp(prefix="serbatool_")
@@ -190,8 +192,11 @@ async def photo_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.to_thread(img_compress, src, dst)
         elif action == "rmbg":
             dst = os.path.join(tmpdir, "hasil-nobg.png")
+            # Semua di thread biar event loop tetap responsif (user bisa
+            # /batal atau pakai fitur lain sambil nunggu). Pertama kali
+            # pakai: model AI ~176MB diunduh dulu, agak lama.
             await asyncio.wait_for(
-                asyncio.to_thread(img_rmbg, src, dst), timeout=RMBG_TIMEOUT
+                asyncio.to_thread(_rmbg_job, src, dst), timeout=RMBG_TIMEOUT
             )
         else:
             raise RuntimeError("tool tidak dikenal: %s" % action)
@@ -208,6 +213,15 @@ async def photo_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (asyncio.TimeoutError, TimeoutError):
         log.warning("tools timeout (%s)", action)
         await status.edit_text("Kelamaan prosesnya. Coba foto yang lebih kecil 🙏")
+    except RuntimeError as e:
+        if str(e) == "REM_BG_OFF":
+            await status.edit_text(
+                "Hapus background belum aktif di server ini 🙏 Coba tools lain dulu."
+            )
+            context.user_data.pop("pending_tool", None)
+        else:
+            log.warning("tools gagal (%s): %s", action, e)
+            await status.edit_text("Gagal proses fotonya. Coba foto lain 🙏")
     except Exception as e:  # noqa: BLE001 - foto aneh harus jadi pesan ramah
         log.warning("tools gagal (%s): %s", action, e)
         await status.edit_text("Gagal proses fotonya. Coba foto lain 🙏")
