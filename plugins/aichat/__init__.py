@@ -141,6 +141,11 @@ def _ask_gemini(question, api_key):
                 log.warning("gemini: model %s 404 (pensiun?), coba berikutnya", model)
                 last_err = e
                 continue
+            if e.code in (429, 500, 502, 503):
+                # overload / gangguan sementara -> model lain mungkin sehat
+                log.warning("gemini: model %s HTTP %s, coba berikutnya", model, e.code)
+                last_err = e
+                continue
             raise
         cands = payload.get("candidates") or []
         parts = (cands[0].get("content") or {}).get("parts") or [] if cands else []
