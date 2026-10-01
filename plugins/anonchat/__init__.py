@@ -1,6 +1,7 @@
 """Plugin anonchat: ngobrol anonim 1 lawan 1 via Telegram."""
 
 import logging
+import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -20,6 +21,7 @@ log = logging.getLogger("serbabot.anonchat")
 
 pairing = PairingManager(timeout=600)  # 10 menit tanpa pesan -> putus
 BADWORDS = load_badwords()
+URL_RE = re.compile(r"https?://\S+")  # duplikat kecil dari downloader (hindari circular import)
 
 last_relay = {}  # sender_id -> (recipient_chat_id, message_id)
 last_text = {}   # sender_id -> teks terakhir yang diteruskan
@@ -118,6 +120,10 @@ async def relay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     upsert_user(_db(context), user.id, user.username)
     partner = pairing.get_partner(user.id)
     if partner is None:
+        # URL di luar sesi = urusan plugin downloader. Diam saja biar tidak
+        # double-reply kalau ada proses ganda / urutan handler meleset.
+        if URL_RE.search(text):
+            return
         await update.message.reply_text("Belum nyambung ke siapa-siapa. /search dulu gih.")
         return
     if contains_badword(text, BADWORDS):
