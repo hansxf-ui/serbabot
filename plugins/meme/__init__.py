@@ -13,7 +13,7 @@ import io
 import logging
 import os
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputSticker, Update
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -233,108 +233,16 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Gagal bikin stikernya. Coba foto lain 🙏")
         return
 
-    me = await context.bot.get_me()
-    set_name = "serba_%d_by_%s" % (user.id, me.username)
-    sticker = InputSticker(
-        sticker=sticker_png, emoji_list=[STIKER_EMOJI], format="static"
-    )
-    row = conn.execute(
-        "SELECT set_name FROM meme_sets WHERE user_id=?", (user.id,)
-    ).fetchone()
-    try:
-        if row:
-            await context.bot.add_sticker_to_set(user.id, row[0], sticker)
-        else:
-            title = "Stiker %s" % (user.first_name or "Serba")
-            await context.bot.create_new_sticker_set(
-                user.id, set_name, title, stickers=[sticker]
-            )
-            conn.execute(
-                "INSERT INTO meme_sets(user_id, set_name) VALUES(?,?)",
-                (user.id, set_name),
-            )
-            conn.commit()
-    except Exception as e:  # noqa: BLE001 - nama set dipakai dsb: jujur aja
-        log.warning("stiker set gagal: %s", e)
-        await update.message.reply_text(
-            "Gagal masukin ke sticker set: %s 🙏" % e
-        )
-        return
-
-    # Pancing client Telegram buat refresh: "sentuh" judul pack supaya
-    # server mengirim update ke sesi user. Tanpa ini, aplikasi kadang
-    # tetap menampilkan kopian lama dari cache lokalnya.
-    # (zero-width space: tidak terlihat oleh user.)
-    try:
-        ss = await context.bot.get_sticker_set(row[0] if row else set_name)
-        title_now = ss.title or ""
-        touched = (
-            title_now[:-1] if title_now.endswith("​") else title_now + "​"
-        )
-        if touched != title_now:
-            await context.bot.set_sticker_set_title(ss.name, touched)
-    except Exception as e:  # noqa: BLE001 - best effort saja
-        log.warning("sentuh judul pack gagal: %s", e)
-
-    # Kirim balik stikernya ke chat: user langsung lihat hasilnya detik itu
-    # juga (real-time) dan bisa mengetuknya untuk buka pack-nya.
-    # Catatan perilaku resmi aplikasi Telegram (dari source client-nya):
-    # pack yang dibuka LEWAT LINK/tombol HANYA menampilkan tombol
-    # "TAMBAH X STIKER" kalau pack-nya BELUM terpasang di panel user.
-    # Kalau pack-nya sudah terpasang + user adalah pemiliknya, yang muncul
-    # adalah "Edit Stiker". Jadi label tombol di bawah ini sengaja NETRAL
-    # ("Buka Pack Stikerku") — bukan "Tambah" — supaya tidak memberi
-    # ekspektasi palsu ada tombol tambah untuk pemilik pack.
-    add_url = "https://t.me/addstickers/%s" % set_name
-    kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("📦 Buka Pack Stikerku", url=add_url)]]
-    )
-    sticker_png.seek(0)
+    # Kirim stikernya langsung ke chat — simpel kayak bot stiker klasik.
+    # (Pack management via API terbukti tidak refresh di aplikasi Telegram,
+    # jadi tidak dipakai: user tinggal tekan-lama stiker untuk simpan manual.)
     await update.message.reply_sticker(sticker=sticker_png)
-
-    if row:
-        await update.message.reply_text(
-            "Nambah 1 stiker ke pack lu ✓\n"
-            "Buka panel stiker (ikon stiker di kolom chat) → cari \"Stiker NL\".",
-            reply_markup=kb,
-        )
-    else:
-        # Pack baru: user wajib tap tombol sekali biar pack-nya masuk panel.
-        await update.message.reply_text(
-            "Pack stiker lu jadi! 🎉\n"
-            "Ketuk tombol di bawah SEKALI biar pack-nya masuk ke menu stiker:",
-            reply_markup=kb,
-        )
+    await update.message.reply_text(
+        "Stiker jadi ✓\n"
+        "Tekan-lama stikernya → tambah ke favorit/pack biar kesimpan."
+    )
     if not vip:
         inc_quota_today(conn, "stiker", user.id)
-
-
-async def cekpack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Debug khusus admin: tanya ke server Telegram pack-nya isi berapa.
-
-    Dipakai buat bedain masalah client (cache aplikasi) vs server
-    (stiker beneran nggak masuk). Bukan fitur user umum.
-    """
-    user = update.effective_user
-    conn = context.bot_data["db"]
-    if user.id != context.bot_data.get("admin_id"):
-        await update.message.reply_text("Khusus admin.")
-        return
-    row = conn.execute(
-        "SELECT set_name FROM meme_sets WHERE user_id=?", (user.id,)
-    ).fetchone()
-    if not row:
-        await update.message.reply_text("Belum ada pack.")
-        return
-    try:
-        ss = await context.bot.get_sticker_set(row[0])
-    except Exception as e:  # noqa: BLE001
-        await update.message.reply_text("Gagal ambil pack: %s" % e)
-        return
-    await update.message.reply_text(
-        "Pack: %s\nJudul: %s\nIsi di server: %d stiker"
-        % (ss.name, ss.title, len(ss.stickers))
-    )
 
 
 def register(app: Application, db):
@@ -350,5 +258,4 @@ def register(app: Application, db):
         filters.PHOTO & filters.CaptionRegex(r"^/(stiker|meme)(@\w+)?(\s|$)"),
         _caption_router,
     ))
-    app.add_handler(CommandHandler("cekpack", cekpack_cmd))
     log.info("meme plugin registered")
