@@ -124,6 +124,7 @@ def _ask_gemini(question, api_key):
     last_err = RuntimeError("tidak ada model Gemini yang tersedia")
     for model in _pick_gemini_models(api_key):
         url = f"{GEMINI_API_BASE}/{model}:generateContent"
+        log.info("gemini: coba model %s", model)
         req = urllib.request.Request(
             url,
             data=body,
@@ -141,8 +142,9 @@ def _ask_gemini(question, api_key):
                 log.warning("gemini: model %s 404 (pensiun?), coba berikutnya", model)
                 last_err = e
                 continue
-            if e.code in (429, 500, 502, 503):
-                # overload / gangguan sementara -> model lain mungkin sehat
+            if e.code in (400, 429, 500, 502, 503):
+                # 400 di model ke-2+ = modelnya yang bermasalah (request sama
+                # persis lolos di model pertama); 429/5xx = gangguan sementara
                 log.warning("gemini: model %s HTTP %s, coba berikutnya", model, e.code)
                 last_err = e
                 continue
