@@ -1,0 +1,16 @@
+[Unit]
+Description=SerbaBot - bot Telegram multi-fitur
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/serbabot
+EnvironmentFile=/etc/serbabot.env
+ExecStart=/opt/serbabot/venv/bin/python /opt/serbabot/bot.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
