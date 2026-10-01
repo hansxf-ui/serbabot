@@ -212,9 +212,11 @@ class _Ctx:
 
 orig_upsert = dlmod3.upsert_user
 orig_premium = dlmod3.is_premium
+orig_vip = dlmod3.is_vip
 orig_quota = dlmod3.quota_ok
 dlmod3.upsert_user = lambda *a: None
 dlmod3.is_premium = lambda *a: False
+dlmod3.is_vip = lambda *a: False
 dlmod3.quota_ok = lambda *a: True
 dlmod3.yt_dlp.YoutubeDL = FakeYDL3
 try:
@@ -269,6 +271,7 @@ try:
 finally:
     dlmod3.upsert_user = orig_upsert
     dlmod3.is_premium = orig_premium
+    dlmod3.is_vip = orig_vip
     dlmod3.quota_ok = orig_quota
     dlmod3.yt_dlp.YoutubeDL = orig_ydl
 
@@ -327,6 +330,7 @@ orig_fetch3 = dlmod3._fetch
 orig_timeout = dlmod3.FETCH_TIMEOUT
 dlmod3.upsert_user = lambda *a: None
 dlmod3.is_premium = lambda *a: False
+dlmod3.is_vip = lambda *a: False
 dlmod3.quota_ok = lambda *a: True
 dlmod3._fetch = lambda url: _time.sleep(5)
 dlmod3.FETCH_TIMEOUT = 0.2
@@ -340,6 +344,7 @@ finally:
     dlmod3.FETCH_TIMEOUT = orig_timeout
     dlmod3.upsert_user = orig_upsert
     dlmod3.is_premium = orig_premium
+    dlmod3.is_vip = orig_vip
     dlmod3.quota_ok = orig_quota
 
 _t("FETCH_TIMEOUT tetap 180 detik", dlmod3.FETCH_TIMEOUT == 180)
