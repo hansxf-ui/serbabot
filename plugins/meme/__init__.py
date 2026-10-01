@@ -294,6 +294,34 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         inc_quota_today(conn, "stiker", user.id)
 
 
+async def cekpack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug khusus admin: tanya ke server Telegram pack-nya isi berapa.
+
+    Dipakai buat bedain masalah client (cache aplikasi) vs server
+    (stiker beneran nggak masuk). Bukan fitur user umum.
+    """
+    user = update.effective_user
+    conn = context.bot_data["db"]
+    if user.id != context.bot_data.get("admin_id"):
+        await update.message.reply_text("Khusus admin.")
+        return
+    row = conn.execute(
+        "SELECT set_name FROM meme_sets WHERE user_id=?", (user.id,)
+    ).fetchone()
+    if not row:
+        await update.message.reply_text("Belum ada pack.")
+        return
+    try:
+        ss = await context.bot.get_sticker_set(row[0])
+    except Exception as e:  # noqa: BLE001
+        await update.message.reply_text("Gagal ambil pack: %s" % e)
+        return
+    await update.message.reply_text(
+        "Pack: %s\nJudul: %s\nIsi di server: %d stiker"
+        % (ss.name, ss.title, len(ss.stickers))
+    )
+
+
 def register(app: Application, db):
     if Image is None:
         log.warning("pillow belum diinstall -> plugin meme nonaktif")
@@ -307,4 +335,5 @@ def register(app: Application, db):
         filters.PHOTO & filters.CaptionRegex(r"^/(stiker|meme)(@\w+)?(\s|$)"),
         _caption_router,
     ))
+    app.add_handler(CommandHandler("cekpack", cekpack_cmd))
     log.info("meme plugin registered")
