@@ -50,7 +50,17 @@ def main():
     token, admin_id = load_config()
     db_path = os.environ.get("DB_PATH", "serbabot.db")
     conn = db.init_db(db_path)
-    app = ApplicationBuilder().token(token).build()
+    app = (
+        ApplicationBuilder()
+        .token(token)
+        # default PTB cuma 5 detik -> upload/download video sering "Timed out"
+        # padahal file-nya kekirim; gedein biar stabil
+        .connect_timeout(30)
+        .read_timeout(180)
+        .write_timeout(180)
+        .pool_timeout(30)
+        .build()
+    )
     app.bot_data["db"] = conn
     app.bot_data["admin_id"] = admin_id
     load_plugins(app, conn)
