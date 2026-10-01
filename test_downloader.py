@@ -104,3 +104,36 @@ _t("tiktok www terdeteksi", _is_tiktok("https://www.tiktok.com/@a/video/123"))
 _t("youtube bukan tiktok", not _is_tiktok("https://youtu.be/abc"))
 _t("ig bukan tiktok", not _is_tiktok("https://www.instagram.com/reel/abc/"))
 print("TAMBAHAN OK")
+
+# --- wiring: extractor args youtube kepasang ---
+print("== wiring extractor_args ==")
+import plugins.downloader as dlmod
+
+captured = {}
+
+class FakeYDL:
+    def __init__(self, opts):
+        captured.update(opts)
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+    def extract_info(self, url, download=True):
+        return {"id": "x", "ext": "mp4", "title": "t"}
+    def prepare_filename(self, info):
+        return "/tmp/fake.mp4"
+
+orig_ydl = dlmod.yt_dlp.YoutubeDL
+orig_exists = __import__("os").path.exists
+dlmod.yt_dlp.YoutubeDL = FakeYDL
+__import__("os").path.exists = lambda p: p == "/tmp/fake.mp4"  # skip cookiefile, lolos cek hasil
+try:
+    dlmod._fetch("https://youtu.be/abc")
+    ea = captured.get("extractor_args", {})
+    _t("extractor_args ada", bool(ea))
+    _t("youtube player_client=android", ea.get("youtube", {}).get("player_client") == ["android"])
+    _t("format tetap best<45M", captured.get("format") == "best[filesize<45M]/best")
+    print("WIRING OK")
+finally:
+    dlmod.yt_dlp.YoutubeDL = orig_ydl
+    __import__("os").path.exists = orig_exists
