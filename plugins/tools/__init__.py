@@ -35,10 +35,24 @@ try:
 except ImportError:  # jangan matikan bot cuma gara2 dep belum diinstall
     Image = None
 
-try:
-    from rembg import remove as _rembg_remove
-except ImportError:
-    _rembg_remove = None
+# rembg = dep BERAT (native: onnxruntime, cv2, numba). Di-import MALAS saat
+# tool-nya beneran dipakai, dan error APAPUN waktu import tidak boleh
+# mematikan bot — cuma tool hapus-background yang nonaktif.
+_rembg_remove = None
+_rembg_failed = False
+
+
+def _get_rembg():
+    global _rembg_remove, _rembg_failed
+    if _rembg_remove is None and not _rembg_failed:
+        try:
+            from rembg import remove
+
+            _rembg_remove = remove
+        except Exception as e:  # noqa: BLE001 - dep opsional, jangan matikan bot
+            _rembg_failed = True
+            log.warning("rembg tidak bisa dipakai: %r", e)
+    return _rembg_remove
 
 log = logging.getLogger("serbabot.tools")
 
@@ -77,10 +91,11 @@ def img_compress(src, dst, quality=60, max_side=1600):
 
 
 def img_rmbg(src, dst):
-    if _rembg_remove is None:
-        raise RuntimeError("rembg belum diinstall di server")
+    remove = _get_rembg()
+    if remove is None:
+        raise RuntimeError("rembg belum bisa dipakai di server ini")
     with Image.open(src) as im:
-        out = _rembg_remove(im)
+        out = remove(im)
         out.save(dst, "PNG")
 
 
@@ -148,7 +163,7 @@ async def photo_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Upgrade ke Premium biar unlimited: /premium"
         )
         return
-    if action == "rmbg" and _rembg_remove is None:
+    if action == "rmbg" and _get_rembg() is None:
         await update.message.reply_text(
             "Hapus background belum aktif di server ini 🙏 Coba tools lain dulu."
         )
