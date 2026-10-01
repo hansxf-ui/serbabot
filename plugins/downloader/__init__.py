@@ -57,25 +57,39 @@ def quota_ok(conn, user_id):
 def _fetch(url):
     """Blocking: download via yt-dlp, return path file. Dipanggil via to_thread."""
     tmpdir = tempfile.mkdtemp(prefix="serbadl_")
-    opts = {
+    base_opts = {
         "format": "best[filesize<45M]/best",
         "outtmpl": os.path.join(tmpdir, "%(title).50s-%(id)s.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        # YouTube sering nantang "login dulu" ke IP datacenter (VPS).
-        # Player client android lolos dari tantangan itu di kebanyakan kasus.
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
-    # TikTok memblokir IP datacenter; cookies dari sesi login asli mengatasinya.
-    # Taruh file cookies (format Netscape) di /opt/serbabot/cookies.txt
-    # atau set env SERBABOT_COOKIES ke path lain.
+    # Cookies dari sesi login asli (format Netscape) bikin YouTube nganggep
+    # request dari server sebagai user beneran, bukan robot. Taruh di
+    # /opt/serbabot/cookies.txt atau set env SERBABOT_COOKIES ke path lain.
     cookie_file = os.environ.get("SERBABOT_COOKIES", "/opt/serbabot/cookies.txt")
     if os.path.exists(cookie_file):
-        opts["cookiefile"] = cookie_file
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        path = ydl.prepare_filename(info)
+        base_opts["cookiefile"] = cookie_file
+
+    def _run(extra_args):
+        opts = dict(base_opts)
+        if extra_args:
+            opts["extractor_args"] = extra_args
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info)
+
+    try:
+        # Client default dulu: daftar format paling lengkap.
+        path = _run(None)
+    except Exception as e:
+        # YouTube kadang nantang "login dulu" ke IP datacenter (VPS).
+        # Kalau itu masalahnya, coba lagi pakai player client android
+        # yang biasanya lolos dari tantangan itu.
+        if "Sign in to confirm" not in str(e):
+            raise
+        log.warning("youtube bot-check, coba player_client android: %s", e)
+        path = _run({"youtube": {"player_client": ["android"]}})
     if not os.path.exists(path):
         # kadang hasil merge namanya beda -> ambil file terbesar di tmpdir
         files = [
