@@ -3,18 +3,24 @@
 - Foto -> PDF
 - Convert format (PNG/JPG/WEBP)
 - Kompres foto (resize + quality)
-- Hapus background (butuh `pip install rembg`; model ~176MB diunduh
-  otomatis saat pertama dipakai)
+- Hapus background: via Replicate API (cepat, ~4 detik; butuh
+  REPLICATE_API_TOKEN) dengan fallback rembg lokal (lambat tapi gratis)
 
 Alur: /tools -> pilih tombol -> kirim foto -> hasil dikirim balik.
 Jatah harian gabung dengan downloader (5/hari gratis, premium unlimited).
 """
 
 import asyncio
+import base64
+import io
+import json
 import logging
 import os
 import shutil
 import tempfile
+import time
+import urllib.error
+import urllib.request
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -100,11 +106,80 @@ def img_rmbg(src, dst):
 
 
 def _rmbg_job(src, dst):
-    """Jalan di thread: import malas + inference. Import-nya berat
-    (onnxruntime dkk, 10-30 detik) jadi JANGAN di event loop."""
+    """Urutan: Replicate API (cepat, ~4 detik di GPU) -> rembg lokal
+    (lambat tapi gratis, tanpa token)."""
+    try:
+        _replicate_rmbg(src, dst)
+        return
+    except Exception as e:  # noqa: BLE001 - API opsional, selalu ada fallback lokal
+        if isinstance(e, RuntimeError) and str(e) == "NO_REPLICATE_TOKEN":
+            log.info("REPLICATE_API_TOKEN belum di-set, pakai rembg lokal")
+        else:
+            log.warning("rmbg via API gagal (%r), fallback lokal", e)
     if _get_rembg() is None:
         raise RuntimeError("REM_BG_OFF")
     img_rmbg(src, dst)
+
+
+# --- Hapus background via Replicate API -------------------------------------
+# Model: cjwbw/rembg — ~$0.0037/foto, GPU L40S, kelar ~4 detik.
+# Daftar gratis di replicate.com dapat $25 kredit (tanpa kartu kredit).
+REPLICATE_API = "https://api.replicate.com/v1/models/cjwbw/rembg/predictions"
+REPLICATE_TIMEOUT = 180
+
+
+def _replicate_rmbg(src, dst, timeout=REPLICATE_TIMEOUT):
+    token = os.environ.get("REPLICATE_API_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("NO_REPLICATE_TOKEN")
+
+    # Kecilkan dulu (maks 1600px, JPEG) biar upload + proses cepat.
+    buf = io.BytesIO()
+    with Image.open(src) as im:
+        im = im.convert("RGB")
+        im.thumbnail((1600, 1600), Image.LANCZOS)
+        im.save(buf, "JPEG", quality=85)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    auth = {"Authorization": "Token " + token}
+
+    def _create():
+        req = urllib.request.Request(
+            REPLICATE_API,
+            data=json.dumps(
+                {"input": {"image": "data:image/jpeg;base64," + b64}}
+            ).encode(),
+            headers={**auth, "Content-Type": "application/json", "Prefer": "wait"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            raise RuntimeError("Replicate API %s: %s" % (e.code, e.read()[:200]))
+
+    pred = _create()
+    deadline = time.time() + timeout
+    while pred.get("status") not in ("succeeded", "failed", "canceled"):
+        if time.time() > deadline:
+            raise RuntimeError("Replicate timeout")
+        time.sleep(2)
+        req = urllib.request.Request(
+            "https://api.replicate.com/v1/predictions/" + pred["id"], headers=auth
+        )
+        with urllib.request.urlopen(req, timeout=30) as r:
+            pred = json.loads(r.read())
+
+    if pred.get("status") != "succeeded":
+        raise RuntimeError("Replicate gagal: %s" % str(pred.get("error"))[:200])
+    out = pred.get("output")
+    if isinstance(out, list):
+        out = out[0] if out else None
+    if not out:
+        raise RuntimeError("Replicate: output kosong")
+
+    req = urllib.request.Request(out, headers={"User-Agent": "SerbaBot/1.0"})
+    with urllib.request.urlopen(req, timeout=90) as r, open(dst, "wb") as f:
+        f.write(r.read())
 
 
 # ---------- handlers ----------
