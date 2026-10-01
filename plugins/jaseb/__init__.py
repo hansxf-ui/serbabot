@@ -6,7 +6,9 @@ Alur user:
   anti-spam) → user terima laporan + link bukti.
 
 Alur admin:
-  - Tambahkan bot sebagai admin ke grup target, lalu di grup itu: /jasebadd
+  - Masukin bot ke grup target (jadi member biasa cukup, NGGAK perlu admin).
+    Khusus channel: bot wajib jadi admin.
+  - Lalu di grup itu: /jasebadd
   - /jasebdel di grup untuk hapus dari daftar
   - /jasebadmin: lihat daftar target, order, atur tarif
   - /jasetarif <stars>: ubah harga per grup (default 10)
