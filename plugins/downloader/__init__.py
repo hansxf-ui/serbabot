@@ -63,6 +63,9 @@ def _fetch(url):
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
+        # YouTube sering nantang "login dulu" ke IP datacenter (VPS).
+        # Player client android lolos dari tantangan itu di kebanyakan kasus.
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
     # TikTok memblokir IP datacenter; cookies dari sesi login asli mengatasinya.
     # Taruh file cookies (format Netscape) di /opt/serbabot/cookies.txt
