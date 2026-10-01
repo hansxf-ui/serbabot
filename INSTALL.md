@@ -47,6 +47,11 @@ ADMIN_ID=123456789
 REPLICATE_API_TOKEN=r8_xxxxxxxxxxxxxxxx
 YTDL_COOKIES=/opt/serbabot/cookies.txt
 GEMINI_API_KEY=xxxx_dari_aistudio
+MENFESS_CHANNEL_ID=-100xxxxxxxxxx
+FOOTBALL_API_KEY=
+RESI_PROVIDER=binderbyte
+RESI_API_KEY=
+RESI_API_URL=
 ```
 
 `REPLICATE_API_TOKEN` = buat hapus background yang cepat (~4 detik, GPU).
@@ -61,9 +66,38 @@ lalu upload file-nya ke VPS. Kalau dikosongkan, downloader tetap jalan tapi
 kadang gagal.
 
 `GEMINI_API_KEY` = bikin `/ai` jawab akurat (tanpa ini, `/ai` pakai
-Pollinations gratis yang kadang ngawur). Ambil gratis di
+Pollinations gratis yang kadang ngawur). Dipakai juga oleh `/persona`,
+`/kuisai`, `/rangkum`, dan transkrip voice note. Ambil gratis di
 https://aistudio.google.com/apikey (kuota gratis 1500x/hari, tanpa kartu
 kredit). Kalau dikosongkan, `/ai` tetap jalan tapi jawabannya bisa ngaco.
+
+`MENFESS_CHANNEL_ID` = ID channel tujuan `/menfess` (mis. `-1001234567890`;
+ambil via @userinfobot setelah forward pesan channel). Tanpa ini, `/menfess`
+menolak dengan pesan jujur (tidak fake kirim).
+
+`FOOTBALL_API_KEY` = opsional, dari https://www.football-data.org (tier gratis).
+Kalau di-set, tebak skor otomatis settlement tiap jam. Kalau dikosongkan,
+admin settlement manual via `/addmatch` & `/setresult` — fitur tetap jalan.
+
+`RESI_PROVIDER` = `binderbyte` (default) atau `custom`.
+`RESI_API_KEY` = API key agregator cek resi (BinderByte butuh daftar, freemium).
+`RESI_API_URL` = wajib kalau provider `custom` (GET `<url>?awb=<nomor>`,
+header `Authorization: Bearer <key>`).
+Tanpa `RESI_API_KEY`, `/resi` balas jujur "butuh API key agregator" —
+tidak ada API cek resi gratis tanpa key yang andal (RajaOngkir gratis cuma
+cek ongkir, bukan tracking).
+
+Fitur voice (`/vn`) butuh package `edge-tts` — sudah ada di
+`requirements.txt`, jadi ke-install otomatis via `pip install -r`.
+Tanpa itu `/vn` balas "belum aktif di server" tapi bot tetap jalan.
+
+Fitur grup (welcome + anti-spam): jadikan bot **admin grup** (beri izin hapus
+pesan) dan matikan **privacy mode** (chat @BotFather → `/setprivacy` →
+pilih bot → Disable). Tanpa ini bot tidak bisa baca/hapus pesan grup.
+
+Pembayaran Premium pakai **Telegram Stars** (invoice via bot, currency XTR) —
+tidak butuh env tambahan. Satu-satunya cara bayar digital yang diizinkan
+Telegram untuk bot. Jalur manual QRIS/DANA sudah dihapus.
 
 Simpan: `Ctrl+O`, `Enter`, `Ctrl+X`. Lalu kunci permission-nya:
 
