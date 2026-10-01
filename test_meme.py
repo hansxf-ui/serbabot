@@ -56,11 +56,13 @@ class FakePhoto:
 
 
 class FakeMessage:
-    def __init__(self):
+    def __init__(self, own_photo_data=None):
         self.replies = []
         self.photos = []
         self.stickers = []
         self.reply_to_message = None
+        # foto yang dikirim bareng caption perintah (tanpa reply)
+        self.photo = [FakePhoto(own_photo_data)] if own_photo_data else []
 
     async def reply_text(self, text, **kw):
         self.replies.append(text)
@@ -80,9 +82,9 @@ class FakeReplyMsg:
 
 
 class FakeUpdate:
-    def __init__(self, uid, photo_data=None):
+    def __init__(self, uid, photo_data=None, own_photo_data=None):
         self.effective_user = FakeUser(uid)
-        self.message = FakeMessage()
+        self.message = FakeMessage(own_photo_data)
         if photo_data is not None:
             self.message.reply_to_message = FakeReplyMsg(photo_data)
 
@@ -245,6 +247,34 @@ asyncio.run(meme.stiker_cmd(u10, ctx10))
 _t("/stiker ke-6: ditolak (habis)",
    any("habis" in r for r in u10.message.replies))
 _t("quota stiker tercatat 5", db.get_quota_today(conn, "stiker", 999) == 5)
+
+# 11. /stiker via caption: kirim foto + caption /stiker (tanpa reply)
+conn = db.init_db(":memory:")
+bot11 = FakeBot()
+u11 = FakeUpdate(444, own_photo_data=photo)
+asyncio.run(meme.stiker_cmd(u11, FakeContext(conn, bot=bot11)))
+_t("/stiker caption: create_new_sticker_set dipanggil",
+   len(bot11.calls) == 1 and bot11.calls[0][0] == "create")
+_t("/stiker caption: stiker dikirim balik ke chat",
+   len(u11.message.stickers) == 1)
+_t("/stiker caption: jatah kepotong 1",
+   db.get_quota_today(conn, "stiker", 444) == 1)
+
+# 12. /meme via caption: kirim foto + caption /meme a|b (tanpa reply)
+conn = db.init_db(":memory:")
+u12 = FakeUpdate(555, own_photo_data=photo)
+asyncio.run(meme.meme_cmd(u12, FakeContext(conn, ["a|b"])))
+_t("/meme caption: foto meme dikirim", len(u12.message.photos) == 1)
+_t("/meme caption: jatah kepotong 1", db.get_quota_today(conn, "meme", 555) == 1)
+
+# 13. reply tetap prioritas kalau dua-duanya ada
+conn = db.init_db(":memory:")
+bot13 = FakeBot()
+u13 = FakeUpdate(666, photo_data=photo, own_photo_data=_test_photo(100, 50))
+asyncio.run(meme.stiker_cmd(u13, FakeContext(conn, bot=bot13)))
+_raw13 = bot13.calls[0][4][0].sticker.input_file_content
+_t("/stiker: foto reply yang dipakai (bukan caption)",
+   Image.open(io.BytesIO(_raw13)).size == (512, 384))
 
 print("MEME " + ("OK" if not fails else "GAGAL: %s" % fails))
 sys.exit(1 if fails else 0)
