@@ -281,6 +281,27 @@ _t("503: model overload dicoba lalu di-skip",
 _t("503: jawaban dari model sehat sampai",
    ans12 == "Jawaban Gemini: halo! Lanjutan.")
 
+# 12b. Model 400 (model bermasalah) di-skip, lanjut ke model berikutnya
+aichat._GEMINI_MODEL_CACHE = None
+tried12b = []
+
+def fake_gemini_400_skip(req, timeout=None):
+    if req.data is None:
+        return FakeResp(DISCOVERY_JSON)
+    tried12b.append(req.full_url)
+    if "gemini-2.5-flash:" in req.full_url:
+        raise urllib.error.HTTPError(req.full_url, 400, "Bad Request", {}, None)
+    return FakeResp(GEMINI_JSON)
+
+urllib.request.urlopen = fake_gemini_400_skip
+ans12b = aichat._ask_gemini("halo", "K")
+_t("400: model bermasalah dicoba lalu di-skip",
+   len(tried12b) == 2
+   and "gemini-2.5-flash:generateContent" in tried12b[0]
+   and "gemini-2.0-flash:generateContent" in tried12b[1])
+_t("400: jawaban dari model sehat sampai",
+   ans12b == "Jawaban Gemini: halo! Lanjutan.")
+
 # 11. Semua model Gemini 404 -> fallback ke Pollinations
 aichat._GEMINI_MODEL_CACHE = None
 
