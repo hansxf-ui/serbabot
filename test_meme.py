@@ -56,16 +56,19 @@ class FakePhoto:
 
 
 class FakeMessage:
-    def __init__(self, own_photo_data=None):
+    def __init__(self, own_photo_data=None, caption=None):
         self.replies = []
+        self.reply_kws = []
         self.photos = []
         self.stickers = []
         self.reply_to_message = None
+        self.caption = caption
         # foto yang dikirim bareng caption perintah (tanpa reply)
         self.photo = [FakePhoto(own_photo_data)] if own_photo_data else []
 
     async def reply_text(self, text, **kw):
         self.replies.append(text)
+        self.reply_kws.append(kw)
 
     async def reply_photo(self, photo, **kw):
         self.photos.append(photo)
@@ -82,9 +85,9 @@ class FakeReplyMsg:
 
 
 class FakeUpdate:
-    def __init__(self, uid, photo_data=None, own_photo_data=None):
+    def __init__(self, uid, photo_data=None, own_photo_data=None, caption=None):
         self.effective_user = FakeUser(uid)
-        self.message = FakeMessage(own_photo_data)
+        self.message = FakeMessage(own_photo_data, caption)
         if photo_data is not None:
             self.message.reply_to_message = FakeReplyMsg(photo_data)
 
@@ -204,10 +207,23 @@ _t("/stiker pertama: emoji default 🙂",
    list(bot.calls[0][4][0].emoji_list) == ["🙂"])
 row = conn.execute("SELECT set_name FROM meme_sets WHERE user_id=777").fetchone()
 _t("/stiker pertama: set tercatat di DB", row and row[0] == "serba_777_by_testbot")
-_t("/stiker pertama: pesan sukses + link addstickers",
-   any("Pack stiker lu jadi" in r for r in u1.message.replies)
-   and any("t.me/addstickers/serba_777_by_testbot" in r
-           for r in u1.message.replies))
+_t("/stiker pertama: pesan sukses",
+   any("Pack stiker lu jadi" in r for r in u1.message.replies))
+
+
+def _tambah_button(kws, setname):
+    for kw in kws:
+        kb = kw.get("reply_markup")
+        if kb:
+            for rowb in kb.inline_keyboard:
+                for b in rowb:
+                    if b.url and ("t.me/addstickers/" + setname) in b.url:
+                        return True
+    return False
+
+
+_t("/stiker pertama: tombol Tambah ke Stikerku ada",
+   _tambah_button(u1.message.reply_kws, "serba_777_by_testbot"))
 _t("/stiker pertama: stiker dikirim balik ke chat (real-time)",
    len(u1.message.stickers) == 1)
 _stback = Image.open(io.BytesIO(u1.message.stickers[0]))
@@ -275,6 +291,44 @@ asyncio.run(meme.stiker_cmd(u13, FakeContext(conn, bot=bot13)))
 _raw13 = bot13.calls[0][4][0].sticker.input_file_content
 _t("/stiker: foto reply yang dipakai (bukan caption)",
    Image.open(io.BytesIO(_raw13)).size == (512, 384))
+
+# 14. caption router: foto + caption /stiker -> jalan (ini yang kemarin mati)
+conn = db.init_db(":memory:")
+bot14 = FakeBot()
+u14 = FakeUpdate(1010, own_photo_data=photo, caption="/stiker")
+asyncio.run(meme._caption_router(u14, FakeContext(conn, bot=bot14)))
+_t("caption /stiker: create_new_sticker_set dipanggil",
+   len(bot14.calls) == 1 and bot14.calls[0][0] == "create")
+_t("caption /stiker: stiker dikirim balik ke chat",
+   len(u14.message.stickers) == 1)
+_t("caption /stiker: tombol tambah ada",
+   _tambah_button(u14.message.reply_kws, "serba_1010_by_testbot"))
+_t("caption /stiker: jatah kepotong 1",
+   db.get_quota_today(conn, "stiker", 1010) == 1)
+
+# 15. caption router: /meme dengan argumen di caption
+conn = db.init_db(":memory:")
+u15 = FakeUpdate(2020, own_photo_data=photo, caption="/meme ATAS|BAWAH")
+asyncio.run(meme._caption_router(u15, FakeContext(conn)))
+_t("caption /meme: foto meme dikirim", len(u15.message.photos) == 1)
+_t("caption /meme: jatah kepotong 1",
+   db.get_quota_today(conn, "meme", 2020) == 1)
+
+# 16. caption router: caption biasa (bukan perintah) diabaikan
+conn = db.init_db(":memory:")
+bot16 = FakeBot()
+u16 = FakeUpdate(3030, own_photo_data=photo, caption="liburan kemarin")
+asyncio.run(meme._caption_router(u16, FakeContext(conn, bot=bot16)))
+_t("caption biasa: tidak ngapa-ngapain",
+   bot16.calls == [] and u16.message.replies == []
+   and u16.message.stickers == [])
+
+# 17. caption router: /stiker@namabot tetap jalan
+conn = db.init_db(":memory:")
+bot17 = FakeBot()
+u17 = FakeUpdate(4040, own_photo_data=photo, caption="/stiker@testbot")
+asyncio.run(meme._caption_router(u17, FakeContext(conn, bot=bot17)))
+_t("caption /stiker@bot: create dipanggil", len(bot17.calls) == 1)
 
 print("MEME " + ("OK" if not fails else "GAGAL: %s" % fails))
 sys.exit(1 if fails else 0)
