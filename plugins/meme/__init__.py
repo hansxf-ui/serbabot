@@ -13,11 +13,13 @@ import io
 import logging
 import os
 
-from telegram import InputSticker, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputSticker, Update
 from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 from db import get_quota_today, inc_quota_today, is_vip, upsert_user
@@ -141,6 +143,28 @@ async def _photo_bytes(update):
     return bytes(await tgfile.download_as_bytearray())
 
 
+async def _caption_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Router untuk perintah yang dikirim sebagai caption foto.
+
+    CommandHandler PTB sengaja tidak menangani caption, jadi foto +
+    caption /stiker atau /meme ditangani di sini (sesuai anjuran PTB:
+    MessageHandler + filters.CAPTION).
+    """
+    msg = update.message
+    caption = (msg.caption or "").strip()
+    if not caption.startswith("/"):
+        return
+    parts = caption.split(None, 1)
+    cmd = parts[0].split("@")[0].lower()  # buang @namabot kalau ada
+    rest = parts[1] if len(parts) > 1 else ""
+    if cmd == "/stiker":
+        context.args = []
+        await stiker_cmd(update, context)
+    elif cmd == "/meme":
+        context.args = rest.split()
+        await meme_cmd(update, context)
+
+
 async def meme_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     conn = context.bot_data["db"]
@@ -241,20 +265,26 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # juga (real-time) dan bisa mengetuknya untuk buka pack-nya. Tanpa ini,
     # user dipaksa buka-tutup aplikasi karena preview link t.me di-cache
     # server Telegram dan tidak refresh saat stiker ditambahkan.
+    # Tombol "Tambah ke Stikerku" selalu disertakan biar aksi nambahin
+    # pack-nya jelas dan satu ketuk, tidak tergantung mengetuk stiker.
+    add_url = "https://t.me/addstickers/%s" % set_name
+    kb = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("➕ Tambah ke Stikerku", url=add_url)]]
+    )
     sticker_png.seek(0)
     await update.message.reply_sticker(sticker=sticker_png)
 
     if row:
         await update.message.reply_text(
-            "Nambah 1 stiker ke pack lu ✓\n"
-            "Ketuk stiker di atas buat buka pack-nya."
+            "Nambah 1 stiker ke pack lu ✓",
+            reply_markup=kb,
         )
     else:
-        # Pack baru: user wajib tap link sekali biar pack-nya masuk panel.
+        # Pack baru: user wajib tap tombol sekali biar pack-nya masuk panel.
         await update.message.reply_text(
             "Pack stiker lu jadi! 🎉\n"
-            "Klik link ini SEKALI biar pack-nya masuk ke menu stiker:\n"
-            "https://t.me/addstickers/%s" % set_name
+            "Ketuk tombol di bawah SEKALI biar pack-nya masuk ke menu stiker:",
+            reply_markup=kb,
         )
     if not vip:
         inc_quota_today(conn, "stiker", user.id)
@@ -268,4 +298,9 @@ def register(app: Application, db):
     db.commit()
     app.add_handler(CommandHandler("meme", meme_cmd))
     app.add_handler(CommandHandler("stiker", stiker_cmd))
+    # CommandHandler tidak menangani caption (kebijakan PTB) -> router sendiri
+    app.add_handler(MessageHandler(
+        filters.PHOTO & filters.CaptionRegex(r"^/(stiker|meme)(@\w+)?(\s|$)"),
+        _caption_router,
+    ))
     log.info("meme plugin registered")
