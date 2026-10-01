@@ -105,15 +105,20 @@ _t("youtube bukan tiktok", not _is_tiktok("https://youtu.be/abc"))
 _t("ig bukan tiktok", not _is_tiktok("https://www.instagram.com/reel/abc/"))
 print("TAMBAHAN OK")
 
-# --- wiring: extractor args youtube kepasang ---
+# --- wiring: client default dulu, fallback android kalau kena bot-check ---
 print("== wiring extractor_args ==")
 import plugins.downloader as dlmod
 
-captured = {}
+calls = []
+fail_mode = None  # None | "botcheck" | "other"
 
 class FakeYDL:
     def __init__(self, opts):
-        captured.update(opts)
+        calls.append(dict(opts))
+        if fail_mode == "botcheck" and len(calls) == 1:
+            raise RuntimeError("Sign in to confirm you're not a bot")
+        if fail_mode == "other" and len(calls) == 1:
+            raise RuntimeError("Video unavailable")
     def __enter__(self):
         return self
     def __exit__(self, *a):
@@ -128,11 +133,28 @@ orig_exists = __import__("os").path.exists
 dlmod.yt_dlp.YoutubeDL = FakeYDL
 __import__("os").path.exists = lambda p: p == "/tmp/fake.mp4"  # skip cookiefile, lolos cek hasil
 try:
+    # 1. normal: percobaan pertama TANPA extractor_args (client default)
+    calls.clear(); fail_mode = None
     dlmod._fetch("https://youtu.be/abc")
-    ea = captured.get("extractor_args", {})
-    _t("extractor_args ada", bool(ea))
-    _t("youtube player_client=android", ea.get("youtube", {}).get("player_client") == ["android"])
-    _t("format tetap best<45M", captured.get("format") == "best[filesize<45M]/best")
+    _t("default tanpa extractor_args", "extractor_args" not in calls[0])
+    _t("format tetap best<45M", calls[0].get("format") == "best[filesize<45M]/best")
+    _t("cuma 1x percobaan kalau sukses", len(calls) == 1)
+
+    # 2. kena bot-check -> coba lagi pakai player_client android
+    calls.clear(); fail_mode = "botcheck"
+    dlmod._fetch("https://youtu.be/abc")
+    _t("retry 2x saat bot-check", len(calls) == 2)
+    ea = calls[1].get("extractor_args", {})
+    _t("fallback youtube player_client=android",
+       ea.get("youtube", {}).get("player_client") == ["android"])
+
+    # 3. error lain (bukan bot-check) langsung raise, tanpa retry
+    calls.clear(); fail_mode = "other"
+    try:
+        dlmod._fetch("https://youtu.be/abc")
+        _t("error non-botcheck raise", False)
+    except RuntimeError as e:
+        _t("error non-botcheck raise", "Video unavailable" in str(e) and len(calls) == 1)
     print("WIRING OK")
 finally:
     dlmod.yt_dlp.YoutubeDL = orig_ydl
