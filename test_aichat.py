@@ -95,6 +95,7 @@ upd = FakeUpdate(111)
 asyncio.run(aichat.ai_cmd(upd, FakeContext(conn, ["apa", "kabar?"])))
 _t("request ke text.pollinations.ai", captured.get("url") == "https://text.pollinations.ai/")
 _t("method POST", captured.get("method") == "POST")
+_t("model openai (bukan default halu)", captured.get("body", {}).get("model") == "openai")
 msgs = captured.get("body", {}).get("messages", [])
 _t("ada system prompt", len(msgs) == 2 and msgs[0]["role"] == "system"
    and "Indonesia" in msgs[0]["content"])
