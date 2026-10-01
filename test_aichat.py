@@ -159,6 +159,46 @@ asyncio.run(aichat.ai_cmd(upd6, FakeContext(conn, ["halo"])))
 _t("premium: tetap dilayani walau jatah penuh", http_calls != [])
 _t("premium: jawaban sampai", upd6.message.edits == ["Jawaban AI: halo!"])
 
+# 7. Gemini: key di-set -> pakai Gemini, parsing candidates benar
+GEMINI_JSON = json.dumps({"candidates": [{"content": {"parts": [
+    {"text": "Jawaban Gemini: halo!"}, {"text": " Lanjutan."}]}}]})
+
+def fake_gemini(req, timeout=None):
+    captured["g_url"] = req.full_url
+    captured["g_key"] = req.get_header("X-goog-api-key")
+    captured["g_body"] = json.loads(req.data.decode())
+    return FakeResp(GEMINI_JSON)
+
+os.environ["GEMINI_API_KEY"] = "TESTKEY123"
+urllib.request.urlopen = fake_gemini
+upd7 = FakeUpdate(777)
+asyncio.run(aichat.ai_cmd(upd7, FakeContext(conn, ["halo"])))
+_t("gemini: endpoint benar", captured.get("g_url") == aichat.GEMINI_API)
+_t("gemini: api key kekirim", captured.get("g_key") == "TESTKEY123")
+_t("gemini: pertanyaan kekirim",
+   captured.get("g_body", {}).get("contents", [{}])[0]
+   .get("parts", [{}])[0].get("text") == "halo")
+_t("gemini: jawaban digabung & diteruskan",
+   upd7.message.edits == ["Jawaban Gemini: halo! Lanjutan."])
+_t("gemini: jatah kepotong", db.get_downloads_today(conn, 777) == 1)
+
+# 8. Gemini gagal -> fallback ke Pollinations
+calls8 = {"n": 0}
+
+def fake_gemini_then_poll(req, timeout=None):
+    calls8["n"] += 1
+    if calls8["n"] == 1:
+        raise RuntimeError("gemini down")
+    return FakeResp("Jawaban fallback: halo!")
+
+urllib.request.urlopen = fake_gemini_then_poll
+upd8 = FakeUpdate(888)
+asyncio.run(aichat.ai_cmd(upd8, FakeContext(conn, ["halo"])))
+_t("fallback: jawaban pollinations sampai",
+   upd8.message.edits == ["Jawaban fallback: halo!"])
+_t("fallback: 2x HTTP (gemini gagal + pollinations)", calls8["n"] == 2)
+
+del os.environ["GEMINI_API_KEY"]
 urllib.request.urlopen = real_urlopen
 
 print("AICHAT " + ("OK" if not fails else "GAGAL: %s" % fails))
