@@ -147,8 +147,11 @@ async def precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def paid_success(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = _db(context)
     pay = update.message.successful_payment
+    # Abaikan payload milik plugin lain (mis. jaseb)
+    if not (pay.invoice_payload or "").startswith("premium:"):
+        return
+    conn = _db(context)
     user = update.effective_user
     _, stars, uid = pay.invoice_payload.split(":", 2)
     user_id = int(uid)
