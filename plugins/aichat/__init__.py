@@ -33,15 +33,18 @@ MAX_REPLY = 3500  # Telegram max 4096; potong biar aman
 
 SYSTEM_PROMPT = (
     "Kamu asisten santai berbahasa Indonesia. Jawab pakai bahasa sehari-hari "
-    "yang gampang dimengerti, singkat tapi jelas. Jangan pakai bahasa kaku."
+    "yang gampang dimengerti, singkat tapi jelas. Jangan pakai bahasa kaku. "
+    "Kalau user minta dibuatkan gambar, bilang aja pakai perintah /gambar."
 )
 
 
 def _ask_ai(question):
     """Blocking: tanya Pollinations.ai (POST JSON OpenAI-style), return teks
-    jawaban. Dipanggil via to_thread biar event loop nggak ke-block."""
+    jawaban. Dipanggil via to_thread biar event loop nggak ke-block.
+    Model 'openai' — model default gratisannya halu parah, yang ini akurat."""
     body = json.dumps(
         {
+            "model": "openai",
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": question},
