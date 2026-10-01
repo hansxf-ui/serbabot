@@ -1,10 +1,11 @@
-"""Plugin downloader: download video dari link via yt-dlp.
+"""Plugin downloader: download video TikTok via yt-dlp / API tikwm.
 
-Dukung: TikTok, Instagram Reels, X, Facebook (yt-dlp yang urus).
-YouTube DIPARKIR sementara: IP server (datacenter) diblokir YouTube,
-jadi link YouTube dibalas pesan jelas, bukan dicoba download.
+YouTube, Instagram, X, Facebook DIPARKIR: IP server diblokir (YT) atau
+download-nya gacha tanpa login (FB/IG/X). Link situs itu dibalas pesan
+jelas, bukan dicoba download.
 
-Freemium: user gratis = 5 download/hari, premium = unlimited.
+Freemium: user gratis = 5 pemakaian/hari (jatah gabung dengan plugin tools),
+premium = unlimited.
 Tidak mengganggu sesi anonchat: URL yang dikirim saat sesi aktif tetap
 di-relay sebagai chat biasa, bukan di-download.
 """
@@ -45,6 +46,7 @@ log = logging.getLogger("serbabot.downloader")
 
 DAILY_FREE_LIMIT = 5
 MAX_BYTES = 45 * 1024 * 1024  # limit file bot Telegram 50MB, kita 45MB biar aman
+FETCH_TIMEOUT = 180  # detik; biar user nggak digantung kalau situsnya ngadat
 
 URL_RE = re.compile(r"https?://\S+")
 
@@ -109,9 +111,18 @@ def _is_tiktok(url):
     return "tiktok.com" in url.lower()
 
 
-def _is_youtube(url):
+# Situs yang diparkir: dicoba pun gagal/gantung dari IP server.
+PARKED_DOMAINS = (
+    "youtube.com", "youtu.be",          # IP diblokir YouTube
+    "instagram.com",                    # butuh login, gacha
+    "facebook.com", "fb.watch",         # butuh login, gacha
+    "x.com", "twitter.com",             # belum stabil
+)
+
+
+def _is_parked(url):
     u = url.lower()
-    return "youtube.com" in u or "youtu.be" in u
+    return any(d in u for d in PARKED_DOMAINS)
 
 
 def _fetch_tiktok_api(url):
@@ -145,11 +156,10 @@ async def _download_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, url
     upsert_user(conn, user.id, user.username)
     premium = is_premium(conn, user.id)
 
-    if _is_youtube(url):
-        # YouTube diparkir: IP server diblokir, jangan buang waktu/quota.
+    if _is_parked(url):
+        # Situs diparkir: jangan buang waktu & jatah user.
         await update.message.reply_text(
-            "Download YouTube lagi nggak bisa untuk sementara 🙏 "
-            "Servernya diblokir sama YouTube. Yang jalan: TikTok, Instagram, X, Facebook."
+            "Situs itu lagi diparkir 🙏 Yang jalan sekarang: TikTok aja."
         )
         return
 
@@ -162,7 +172,17 @@ async def _download_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, url
 
     status = await update.message.reply_text("Lagi download... ⏳")
     try:
-        path = await asyncio.to_thread(_fetch, url)
+        # Timeout biar user nggak digantung. (Thread yt-dlp-nya nggak bisa
+        # di-cancel paksa dari sini, tapi dia mati sendiri.)
+        path = await asyncio.wait_for(
+            asyncio.to_thread(_fetch, url), timeout=FETCH_TIMEOUT
+        )
+    except (asyncio.TimeoutError, TimeoutError):
+        log.warning("download timeout (%s)", url)
+        await status.edit_text(
+            "Kelamaan, servernya nggak respon. Coba lagi nanti atau pakai link lain 🙏"
+        )
+        return
     except Exception as e:  # noqa: BLE001 - link mati/unsupported harus jadi pesan ramah
         log.warning("download gagal (%s): %s", url, e)
         if _is_tiktok(url):
