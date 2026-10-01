@@ -33,6 +33,7 @@ from db import (
     get_downloads_today,
     inc_downloads_today,
     is_premium,
+    is_vip,
     upsert_user,
 )
 from plugins.anonchat import is_in_session
@@ -154,7 +155,7 @@ async def _download_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, url
     user = update.effective_user
     conn = context.bot_data["db"]
     upsert_user(conn, user.id, user.username)
-    premium = is_premium(conn, user.id)
+    premium = is_vip(conn, user.id, context.bot_data.get("admin_id"))
 
     if _is_parked(url):
         # Situs diparkir: jangan buang waktu & jatah user.
