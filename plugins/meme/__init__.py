@@ -203,7 +203,6 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     row = conn.execute(
         "SELECT set_name FROM meme_sets WHERE user_id=?", (user.id,)
     ).fetchone()
-    set_used = row[0] if row else set_name
     try:
         if row:
             await context.bot.add_sticker_to_set(user.id, row[0], sticker)
@@ -224,13 +223,25 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Set-nya memang sudah jadi di server Telegram, tapi tidak otomatis
-    # nongol di menu stiker user — user harus buka link addstickers sekali.
-    await update.message.reply_text(
-        "Stiker ditambahkan ke set lu! 🎉\n"
-        "Biar muncul di menu stiker, klik link ini sekali:\n"
-        "https://t.me/addstickers/%s" % set_used
-    )
+    # Kirim balik stikernya ke chat: user langsung lihat hasilnya detik itu
+    # juga (real-time) dan bisa mengetuknya untuk buka pack-nya. Tanpa ini,
+    # user dipaksa buka-tutup aplikasi karena preview link t.me di-cache
+    # server Telegram dan tidak refresh saat stiker ditambahkan.
+    sticker_png.seek(0)
+    await update.message.reply_sticker(sticker=sticker_png)
+
+    if row:
+        await update.message.reply_text(
+            "Nambah 1 stiker ke pack lu ✓\n"
+            "Ketuk stiker di atas buat buka pack-nya."
+        )
+    else:
+        # Pack baru: user wajib tap link sekali biar pack-nya masuk panel.
+        await update.message.reply_text(
+            "Pack stiker lu jadi! 🎉\n"
+            "Klik link ini SEKALI biar pack-nya masuk ke menu stiker:\n"
+            "https://t.me/addstickers/%s" % set_name
+        )
     if not vip:
         inc_quota_today(conn, "stiker", user.id)
 
