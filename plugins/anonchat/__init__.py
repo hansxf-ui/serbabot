@@ -27,23 +27,62 @@ last_relay = {}  # sender_id -> (recipient_chat_id, message_id)
 last_text = {}   # sender_id -> teks terakhir yang diteruskan
 
 WELCOME = (
-    "Halo! Gue SerbaBot.\n\n"
-    "Di sini lu bisa ngobrol anonim sama orang random. "
-    "Nama lu nggak kelihatan, yang kelihatan cuma obrolan.\n\n"
-    "Pencet tombol di bawah buat mulai."
+    "Halo! Gue SerbaBot 🤖\n\n"
+    "Ngobrol anonim, download video, main kuis, cek weton & jadwal sholat, "
+    "bikin meme — semua dalam satu bot.\n\n"
+    "Pencet tombol di bawah buat cari teman ngobrol, "
+    "atau ketik /help buat lihat semua fitur."
 )
 
-PREMIUM_TEXT = (
-    "SerbaBot Premium\n\n"
-    "Harga: Rp15.000/bulan\n"
-    "Fitur: antrean prioritas, tanpa batas /next, badge premium.\n\n"
-    "Cara bayar (manual, phase 1):\n"
-    "1. Transfer ke QRIS/DANA (minta info ke admin)\n"
-    "2. Kirim bukti transfer ke bot ini\n"
-    "3. Admin verifikasi, akun lu jadi premium\n\n"
-    "Verifikasi otomatis nyusul di phase berikutnya."
+HELP_TEXT = (
+    "🤖 Daftar Fitur SerbaBot\n\n"
+    "💬 Ngobrol & Sosial\n"
+    "/search — cari teman ngobrol anonim\n"
+    "/menfess <teks> — kirim menfess anonim (3/hari)\n"
+    "/invite — ajak teman, dapat koin + bonus\n\n"
+    "🪙 Koin & Harian\n"
+    "/checkin — check-in harian, kumpulin koin + streak 🔥\n"
+    "/koin — saldo & riwayat koin\n"
+    "/gacha — pull kartu harian gratis\n"
+    "/koleksi — lihat koleksi kartu\n\n"
+    "🎮 Game & Kuis\n"
+    "/kuis — kuis harian Bahasa Indonesia (3/hari)\n"
+    "/kuisai <topik> — kuis bikinan AI dari topik apapun (2/hari)\n"
+    "/tod — truth or dare buat grup/tongkrongan\n"
+    "/top — leaderboard kuis\n"
+    "/skor — tebak skor bola pakai koin (bukan judi!)\n\n"
+    "🤖 AI\n"
+    "/ai <tanya> — tanya AI\n"
+    "/persona — pilih karakter AI (Kak Curhat, Tutor, dll.)\n"
+    "/gambar <deskripsi> — bikin gambar AI\n"
+    "/rangkum <link> — ringkas artikel jadi 5 poin (5/hari)\n"
+    "/vn <teks> — teks jadi voice note (3/hari)\n"
+    "Kirim voice note — ditranskrip jadi teks\n\n"
+    "🔮 Lokal\n"
+    "/zodiak <tgl> — horoskop harian (cth: /zodiak 17-08-1945)\n"
+    "/weton <tgl> — hitung weton Jawa\n"
+    "/jodoh <tgl1> <tgl2> — cek kecocokan neptu\n"
+    "/sholat <kota> — jadwal sholat hari ini\n"
+    "/sholatset <kota> — pengingat tiap waktu sholat\n"
+    "/resi <nomor> — lacak paket\n\n"
+    "🛠️ Tools\n"
+    "Kirim link TikTok/IG/YouTube — auto download\n"
+    "Kirim foto — tools: PDF, convert, kompres, hapus background\n"
+    "Kirim video — tools: kompres, convert, potong\n"
+    "/meme — reply foto + teks atas|bawah jadi meme\n"
+    "/stiker — reply foto jadi stiker\n"
+    "/memein — reply foto ditempel ke template lucu (20 koin)\n\n"
+    "⭐ Premium\n"
+    "/premium — upgrade: jatah unlimited, tanpa watermark\n"
+    "/katalog — konten eksklusif pakai Stars\n\n"
+    "Yang gratis tetap gratis selamanya. Have fun! 🎉"
 )
 
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    upsert_user(_db(context), update.effective_user.id,
+               update.effective_user.username)
+    await update.message.reply_text(HELP_TEXT)
 
 def _db(context):
     return context.bot_data["db"]
@@ -63,8 +102,34 @@ def _kb_search():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    _handle_referral_hook(context, user)
     upsert_user(_db(context), user.id, user.username)
     await update.message.reply_text(WELCOME, reply_markup=_kb_search())
+
+
+def _handle_referral_hook(context, user):
+    """Hook /start?start=referral_<id>: kredit referral user baru.
+
+    Dipisah dari logika start() supaya hook yang error tidak pernah
+    merusak sapaan WELCOME.
+    """
+    args = getattr(context, "args", None) or []
+    if not args or not args[0].startswith("referral_"):
+        return
+    try:
+        referrer_id = int(args[0].split("referral_", 1)[1])
+    except ValueError:
+        return
+    if referrer_id == user.id:
+        return
+    try:
+        # Import lazy: referral load belakangan di pkgutil, dan hook tidak
+        # boleh bikin start() gagal gara-gara import.
+        from plugins.referral import credit_referral
+
+        credit_referral(_db(context), user.id, referrer_id)
+    except Exception as e:  # noqa: BLE001 - hook gagal = skip, start tetap jalan
+        log.warning("referral hook gagal: %s", e)
 
 
 async def _search(user, reply, context):
@@ -169,10 +234,6 @@ async def report_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.message.reply_text("Laporan diterima. Makasih udah bantu jaga!")
 
 
-async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(PREMIUM_TEXT)
-
-
 async def timeout_job(context: ContextTypes.DEFAULT_TYPE):
     for user_id in pairing.expired():
         status, partner = pairing.stop(user_id)
@@ -187,10 +248,10 @@ async def timeout_job(context: ContextTypes.DEFAULT_TYPE):
 
 def register(app: Application, db):
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("search", search_cmd))
     app.add_handler(CommandHandler("next", next_cmd))
     app.add_handler(CommandHandler("stop", stop_cmd))
-    app.add_handler(CommandHandler("premium", premium_cmd))
     app.add_handler(CallbackQueryHandler(search_btn, pattern="^search$"))
     app.add_handler(CallbackQueryHandler(report_btn, pattern=r"^report:\d+$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, relay))
