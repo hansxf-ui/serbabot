@@ -126,7 +126,9 @@ def _rmbg_job(src, dst):
 # --- Hapus background via Replicate API -------------------------------------
 # Model: cjwbw/rembg — ~$0.0037/foto, GPU L40S, kelar ~4 detik.
 # Daftar gratis di replicate.com dapat $25 kredit (tanpa kartu kredit).
-REPLICATE_API = "https://api.replicate.com/v1/models/cjwbw/rembg/predictions"
+# Endpoint klasik /v1/predictions + version yang terverifikasi (2026-10-01).
+REPLICATE_API = "https://api.replicate.com/v1/predictions"
+REPLICATE_VERSION = "fb8af171cfa1616ddcf1242c093f9c46bcada5ad4cf6f2fbe8b81b330ec5c003"  # cjwbw/rembg
 REPLICATE_TIMEOUT = 180
 
 
@@ -148,7 +150,10 @@ def _replicate_rmbg(src, dst, timeout=REPLICATE_TIMEOUT):
         req = urllib.request.Request(
             REPLICATE_API,
             data=json.dumps(
-                {"input": {"image": "data:image/jpeg;base64," + b64}}
+                {
+                    "version": REPLICATE_VERSION,
+                    "input": {"image": "data:image/jpeg;base64," + b64},
+                }
             ).encode(),
             headers={**auth, "Content-Type": "application/json", "Prefer": "wait"},
             method="POST",
