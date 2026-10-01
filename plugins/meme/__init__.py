@@ -261,6 +261,21 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Pancing client Telegram buat refresh: "sentuh" judul pack supaya
+    # server mengirim update ke sesi user. Tanpa ini, aplikasi kadang
+    # tetap menampilkan kopian lama dari cache lokalnya.
+    # (zero-width space: tidak terlihat oleh user.)
+    try:
+        ss = await context.bot.get_sticker_set(row[0] if row else set_name)
+        title_now = ss.title or ""
+        touched = (
+            title_now[:-1] if title_now.endswith("​") else title_now + "​"
+        )
+        if touched != title_now:
+            await context.bot.set_sticker_set_title(ss.name, touched)
+    except Exception as e:  # noqa: BLE001 - best effort saja
+        log.warning("sentuh judul pack gagal: %s", e)
+
     # Kirim balik stikernya ke chat: user langsung lihat hasilnya detik itu
     # juga (real-time) dan bisa mengetuknya untuk buka pack-nya.
     # Catatan perilaku resmi aplikasi Telegram (dari source client-nya):
