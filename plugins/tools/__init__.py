@@ -32,7 +32,7 @@ from telegram.ext import (
     filters,
 )
 
-from db import inc_downloads_today, is_premium, upsert_user
+from db import inc_downloads_today, is_vip, upsert_user
 from plugins.anonchat import is_in_session
 from plugins.downloader import quota_ok
 
@@ -328,7 +328,7 @@ async def photo_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     conn = context.bot_data["db"]
     upsert_user(conn, user.id, user.username)
-    premium = is_premium(conn, user.id)
+    premium = is_vip(conn, user.id, context.bot_data.get("admin_id"))
     if not premium and not quota_ok(conn, user.id):
         await update.message.reply_text(
             "Jatah harian gratis lu habis (5/hari). "
@@ -403,7 +403,7 @@ async def video_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     conn = context.bot_data["db"]
     upsert_user(conn, user.id, user.username)
-    premium = is_premium(conn, user.id)
+    premium = is_vip(conn, user.id, context.bot_data.get("admin_id"))
     if not premium and not quota_ok(conn, user.id):
         await update.message.reply_text(
             "Jatah harian gratis lu habis (5/hari). "
