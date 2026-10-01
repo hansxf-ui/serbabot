@@ -47,6 +47,12 @@ def _db(context):
     return context.bot_data["db"]
 
 
+def is_in_session(user_id):
+    """Dipakai plugin lain (mis. downloader): True kalau user lagi paired
+    di sesi anon chat. State pairing milik anonchat, jangan diduplikat."""
+    return pairing.get_partner(user_id) is not None
+
+
 def _kb_search():
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton("Cari teman ngobrol", callback_data="search")]]
