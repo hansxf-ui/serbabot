@@ -109,7 +109,9 @@ def _rmbg_job(src, dst):
     """Urutan: Replicate API (cepat, ~4 detik di GPU) -> rembg lokal
     (lambat tapi gratis, tanpa token)."""
     try:
+        log.info("rmbg: coba via Replicate API...")
         _replicate_rmbg(src, dst)
+        log.info("rmbg via Replicate API OK")
         return
     except Exception as e:  # noqa: BLE001 - API opsional, selalu ada fallback lokal
         if isinstance(e, RuntimeError) and str(e) == "NO_REPLICATE_TOKEN":
