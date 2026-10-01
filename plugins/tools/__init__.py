@@ -1,12 +1,11 @@
-"""Plugin tools: olah foto langsung di Telegram.
+"""Plugin tools: olah foto & video langsung di Telegram.
 
-- Foto -> PDF
-- Convert format (PNG/JPG/WEBP)
-- Kompres foto (resize + quality)
-- Hapus background: via Replicate API (cepat, ~4 detik; butuh
-  REPLICATE_API_TOKEN) dengan fallback rembg lokal (lambat tapi gratis)
+Foto: foto -> PDF, convert format (PNG/JPG/WEBP), kompres foto,
+hapus background (Replicate API / rembg lokal).
+Video (butuh ffmpeg di server): kompres video, convert ke MP4,
+potong 30 detik pertama.
 
-Alur: /tools -> pilih tombol -> kirim foto -> hasil dikirim balik.
+Alur: /tools -> pilih tombol -> kirim foto/video -> hasil dikirim balik.
 Jatah harian gabung dengan downloader (5/hari gratis, premium unlimited).
 """
 
@@ -17,6 +16,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 import urllib.error
@@ -81,7 +81,13 @@ TOOL_LABEL = {
     "to_webp": "🔄 Convert ke WEBP",
     "compress": "🗜️ Kompres foto",
     "rmbg": "🎨 Hapus background",
+    "vcompress": "🗜️ Kompres video",
+    "vconvert": "🎬 Video → MP4",
+    "vtrim": "✂️ Potong 30 detik pertama",
 }
+
+VIDEO_ACTIONS = {"vcompress", "vconvert", "vtrim"}
+FFMPEG_TIMEOUT = 180  # detik; video di CPU 2-core jangan kelamaan
 
 
 # ---------- fungsi murni (gampang di-test) ----------
@@ -112,6 +118,49 @@ def img_rmbg(src, dst):
     with Image.open(src) as im:
         out = remove(im, session=_get_session())
         out.save(dst, "PNG")
+
+
+# ---------- video via ffmpeg (fungsi murni, gampang di-test) ----------
+
+def _run_ffmpeg(args, timeout=FFMPEG_TIMEOUT):
+    """Jalankan ffmpeg. ffmpeg tidak ada -> RuntimeError('FFMPEG_OFF')."""
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"] + args
+    try:
+        p = subprocess.run(cmd, timeout=timeout, capture_output=True)
+    except FileNotFoundError:
+        raise RuntimeError("FFMPEG_OFF")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("ffmpeg kelamaan (>3 menit), coba video yang lebih kecil")
+    if p.returncode != 0:
+        err = p.stderr.decode(errors="replace")[:200] if p.stderr else ""
+        raise RuntimeError("ffmpeg gagal: %s" % err)
+
+
+def vid_compress(src, dst):
+    """Kompres video: lebar maks 1280px, crf 28, preset veryfast."""
+    _run_ffmpeg([
+        "-i", src,
+        "-vf", "scale='min(1280,iw)':-2",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+        "-c:a", "aac", "-b:a", "128k",
+        dst,
+    ])
+
+
+def vid_to_mp4(src, dst):
+    """Convert video apa pun ke MP4 (h264 + aac)."""
+    _run_ffmpeg([
+        "-i", src,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        dst,
+    ])
+
+
+def vid_trim(src, dst, seconds=30):
+    """Potong N detik pertama. Tanpa re-encode -> cepat."""
+    _run_ffmpeg(["-i", src, "-t", str(seconds), "-c", "copy", dst])
 
 
 def _rmbg_job(src, dst):
@@ -206,6 +255,7 @@ async def tools_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔄 Convert format", callback_data="tool:convert")],
         [InlineKeyboardButton("🗜️ Kompres foto", callback_data="tool:compress")],
         [InlineKeyboardButton("🎨 Hapus background", callback_data="tool:rmbg")],
+        [InlineKeyboardButton("🎬 Tools video", callback_data="tool:video")],
     ]
     await update.message.reply_text(
         "Pilih tools, terus kirim fotonya ya 📸",
@@ -234,10 +284,28 @@ async def tool_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("pending_tool", None)
         await q.edit_message_text("Dibatalkan.")
         return
+    if action == "video":
+        kb = [
+            [InlineKeyboardButton("🗜️ Kompres video", callback_data="tool:vcompress")],
+            [InlineKeyboardButton("🎬 Video → MP4", callback_data="tool:vconvert")],
+            [InlineKeyboardButton(
+                "✂️ Potong 30 detik pertama", callback_data="tool:vtrim")],
+            [InlineKeyboardButton("❌ Batal", callback_data="tool:cancel")],
+        ]
+        await q.edit_message_text(
+            "Tools video — pilih:", reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return
     context.user_data["pending_tool"] = action
-    await q.edit_message_text(
-        f"{TOOL_LABEL[action]} — sekarang kirim fotonya 📸\n/batal buat batalin."
-    )
+    if action in VIDEO_ACTIONS:
+        await q.edit_message_text(
+            f"{TOOL_LABEL[action]} — sekarang kirim videonya 🎬 (maks 45MB)\n"
+            "/batal buat batalin."
+        )
+    else:
+        await q.edit_message_text(
+            f"{TOOL_LABEL[action]} — sekarang kirim fotonya 📸\n/batal buat batalin."
+        )
 
 
 async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -252,6 +320,11 @@ async def photo_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_in_session(user.id):
         # lagi ngobrol anon: foto dianggap chat, bukan bahan tools
+        return
+    if action in VIDEO_ACTIONS:
+        await update.message.reply_text(
+            "Ini tools video — kirim videonya ya 🎬 (bukan foto)\n/batal buat batalin."
+        )
         return
     conn = context.bot_data["db"]
     upsert_user(conn, user.id, user.username)
@@ -320,6 +393,73 @@ async def photo_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+async def video_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    action = context.user_data.get("pending_tool")
+    if not action or action not in VIDEO_ACTIONS:
+        return
+    user = update.effective_user
+    if is_in_session(user.id):
+        # lagi ngobrol anon: video dianggap chat, bukan bahan tools
+        return
+    conn = context.bot_data["db"]
+    upsert_user(conn, user.id, user.username)
+    premium = is_premium(conn, user.id)
+    if not premium and not quota_ok(conn, user.id):
+        await update.message.reply_text(
+            "Jatah harian gratis lu habis (5/hari). "
+            "Upgrade ke Premium biar unlimited: /premium"
+        )
+        return
+
+    status = await update.message.reply_text("Lagi diproses... ⏳")
+    tmpdir = tempfile.mkdtemp(prefix="serbatool_")
+    try:
+        src = os.path.join(tmpdir, "in")
+        tgfile = await update.message.video.get_file()
+        await tgfile.download_to_drive(src)
+        if os.path.getsize(src) > MAX_BYTES:
+            await status.edit_text(
+                "Videonya kegedean (>45MB), kirim yang lebih kecil 🙏"
+            )
+            return
+
+        if action == "vcompress":
+            dst = os.path.join(tmpdir, "hasil-kompres.mp4")
+            await asyncio.to_thread(vid_compress, src, dst)
+        elif action == "vconvert":
+            dst = os.path.join(tmpdir, "hasil.mp4")
+            await asyncio.to_thread(vid_to_mp4, src, dst)
+        elif action == "vtrim":
+            dst = os.path.join(tmpdir, "hasil-potong.mp4")
+            await asyncio.to_thread(vid_trim, src, dst)
+        else:
+            raise RuntimeError("tool tidak dikenal: %s" % action)
+
+        if os.path.getsize(dst) > MAX_BYTES:
+            await status.edit_text("Hasilnya kegedean (>45MB), nggak bisa dikirim 🙏")
+            return
+        with open(dst, "rb") as f:
+            await update.message.reply_video(video=f)
+        if not premium:
+            inc_downloads_today(conn, user.id)
+        context.user_data.pop("pending_tool", None)
+        await status.delete()
+    except RuntimeError as e:
+        if str(e) == "FFMPEG_OFF":
+            await status.edit_text(
+                "Tools video belum aktif di server ini 🙏 Coba tools foto dulu."
+            )
+            context.user_data.pop("pending_tool", None)
+        else:
+            log.warning("video tools gagal (%s): %s", action, e)
+            await status.edit_text("Gagal proses videonya. Coba video lain 🙏")
+    except Exception as e:  # noqa: BLE001 - video aneh harus jadi pesan ramah
+        log.warning("video tools gagal (%s): %s", action, e)
+        await status.edit_text("Gagal proses videonya. Coba video lain 🙏")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def register(app: Application, db):
     if Image is None:
         log.warning("pillow belum diinstall -> plugin tools nonaktif. pip install pillow")
@@ -328,4 +468,5 @@ def register(app: Application, db):
     app.add_handler(CommandHandler("batal", cancel_cmd))
     app.add_handler(CallbackQueryHandler(tool_choice, pattern=r"^tool:"))
     app.add_handler(MessageHandler(filters.PHOTO, photo_in))
+    app.add_handler(MessageHandler(filters.VIDEO, video_in))
     log.info("tools plugin registered")
