@@ -22,10 +22,14 @@ python3 -m venv venv
 > Ubuntu 24.04 melarang `pip install` global (PEP 668). Makanya pakai venv
 > seperti di atas — jangan pakai `sudo pip`.
 
-> `requirements.txt` sudah mencakup `yt-dlp` (buat plugin downloader).
+> `requirements.txt` sudah mencakup `yt-dlp` (downloader), `pillow` (tools),
+> dan `rembg` (tools hapus background).
 > `ffmpeg` opsional tapi disarankan — tanpa ffmpeg, yt-dlp kadang nggak bisa
 > gabung video+audio kualitas tertinggi. Install kalau mau:
 > `sudo apt install -y ffmpeg`
+>
+> Catatan `rembg`: saat fitur hapus background pertama dipakai, model AI
+> ~176MB diunduh otomatis (butuh internet, agak lama). Proses di CPU.
 
 ## 2. Isi token & admin ID
 
@@ -71,7 +75,8 @@ Buka Telegram, chat ke bot-mu, kirim `/start`. Kalau dibales, berarti jalan.
 
 ```bash
 cd /opt/serbabot
-# copy file baru ke sini, lalu:
+git pull
+./venv/bin/pip install -r requirements.txt  # kalau ada dep baru (pillow, rembg, ...)
 sudo systemctl restart serbabot
 ```
 
