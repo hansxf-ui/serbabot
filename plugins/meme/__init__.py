@@ -1,10 +1,11 @@
 """Plugin meme & stiker.
 
-/meme <atas>|<bawah> — WAJIB reply ke foto: jadikan meme
-    (teks Impact-style: putih, outline hitam, uppercase).
+/meme <atas>|<bawah> — reply ke foto ATAU kirim foto dengan caption:
+/meme — jadikan meme (teks Impact-style: putih, outline hitam, uppercase).
     Non-VIP: watermark kecil "SerbaBot" di pojok kanan bawah.
-/stiker               — WAJIB reply ke foto: jadikan stiker Telegram
-    (resize sisi terpanjang 512px, PNG, masuk sticker set per user).
+/stiker               — reply ke foto ATAU kirim foto dengan caption /stiker:
+    jadikan stiker Telegram (resize sisi terpanjang 512px, PNG,
+    masuk sticker set per user).
 
 Jatah: /meme 10/hari, /stiker 5/hari. VIP unlimited.
 """
@@ -125,10 +126,18 @@ def photo_to_sticker(photo_bytes):
 
 
 async def _photo_bytes(update):
-    rmsg = update.message.reply_to_message
-    if not rmsg or not rmsg.photo:
+    """Ambil foto dari pesan yang di-reply ATAU dari foto yang dikirim
+    bareng caption perintah (dua-duanya didukung)."""
+    msg = update.message
+    rmsg = msg.reply_to_message
+    target = None
+    if rmsg and rmsg.photo:
+        target = rmsg
+    elif msg.photo:
+        target = msg
+    if target is None:
         return None
-    tgfile = await rmsg.photo[-1].get_file()
+    tgfile = await target.photo[-1].get_file()
     return bytes(await tgfile.download_as_bytearray())
 
 
@@ -140,7 +149,10 @@ async def meme_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = await _photo_bytes(update)
     if data is None:
         await update.message.reply_text(
-            "Cara pakai: reply ke sebuah foto, terus kirim:\n"
+            "Cara pakai (2 cara):\n"
+            "1. Reply ke sebuah foto, terus kirim:\n"
+            "/meme TEKS ATAS|TEKS BAWAH\n"
+            "2. Kirim foto dengan caption:\n"
             "/meme TEKS ATAS|TEKS BAWAH\n\n"
             "Contoh: /meme KALAU DITANYA KAPAN NIKAH|GUE: ..."
         )
@@ -176,7 +188,9 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = await _photo_bytes(update)
     if data is None:
         await update.message.reply_text(
-            "Cara pakai: reply ke sebuah foto, terus kirim:\n/stiker"
+            "Cara pakai (2 cara):\n"
+            "1. Reply ke sebuah foto, terus kirim: /stiker\n"
+            "2. Kirim foto dengan caption: /stiker"
         )
         return
 
