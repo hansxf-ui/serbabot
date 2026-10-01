@@ -2,3 +2,4 @@ python-telegram-bot[job-queue]>=21
 yt-dlp
 pillow
 rembg[cpu]  # buat tools hapus background; model ~176MB diunduh saat pertama dipakai
+edge-tts  # buat /vn teks->voice note (suara id-ID-ArdiNeural)
