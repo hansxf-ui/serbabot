@@ -159,3 +159,72 @@ try:
 finally:
     dlmod.yt_dlp.YoutubeDL = orig_ydl
     __import__("os").path.exists = orig_exists
+
+# --- youtube diparkir: dibalas pesan jelas, tidak di-download, tidak makan jatah ---
+print("== youtube parked ==")
+import asyncio
+import plugins.downloader as dlmod3
+from plugins.downloader import _is_youtube
+
+_t("youtube.com kedeteksi", _is_youtube("https://www.youtube.com/watch?v=abc"))
+_t("youtu.be kedeteksi", _is_youtube("https://youtu.be/abc"))
+_t("tiktok bukan youtube", not _is_youtube("https://www.tiktok.com/@a/video/123"))
+
+fetch_calls = []
+class FakeYDL3:
+    def __init__(self, opts):
+        fetch_calls.append(opts)
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+    def extract_info(self, url, download=True):
+        return {"id": "x", "ext": "mp4", "title": "t"}
+    def prepare_filename(self, info):
+        return "/tmp/fake.mp4"
+
+class _Msg:
+    def __init__(self):
+        self.texts = []
+    async def reply_text(self, t):
+        self.texts.append(t)
+        return self
+
+class _Upd:
+    def __init__(self):
+        self.message = _Msg()
+        self.effective_user = type("U", (), {"id": 99, "username": "tester"})()
+
+class _Ctx:
+    bot_data = {"db": object()}
+
+orig_upsert = dlmod3.upsert_user
+orig_premium = dlmod3.is_premium
+orig_quota = dlmod3.quota_ok
+dlmod3.upsert_user = lambda *a: None
+dlmod3.is_premium = lambda *a: False
+dlmod3.quota_ok = lambda *a: True
+dlmod3.yt_dlp.YoutubeDL = FakeYDL3
+try:
+    u = _Upd()
+    asyncio.run(dlmod3._download_flow(u, _Ctx(), "https://youtu.be/abc123"))
+    _t("yt-dlp tidak dipanggil", fetch_calls == [])
+    _t("dibalas pesan parkir", any("YouTube" in t and "sementara" in t for t in u.message.texts))
+    # link non-youtube tetap jalan normal (yt-dlp dipanggil)
+    fetch_calls.clear()
+    orig_exists3 = __import__("os").path.exists
+    __import__("os").path.exists = lambda p: True
+    u2 = _Upd()
+    try:
+        asyncio.run(dlmod3._download_flow(u2, _Ctx(), "https://www.tiktok.com/@a/video/123"))
+    except Exception:
+        pass  # kirim video butuh objek telegram asli; cukup pastikan _fetch kepanggil
+    finally:
+        __import__("os").path.exists = orig_exists3
+    _t("tiktok tetap coba download", len(fetch_calls) == 1)
+    print("PARKED OK")
+finally:
+    dlmod3.upsert_user = orig_upsert
+    dlmod3.is_premium = orig_premium
+    dlmod3.quota_ok = orig_quota
+    dlmod3.yt_dlp.YoutubeDL = orig_ydl
