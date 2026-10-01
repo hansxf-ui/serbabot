@@ -45,20 +45,29 @@ except ImportError:  # jangan matikan bot cuma gara2 dep belum diinstall
 # tool-nya beneran dipakai, dan error APAPUN waktu import tidak boleh
 # mematikan bot — cuma tool hapus-background yang nonaktif.
 _rembg_remove = None
+_rembg_session = None
 _rembg_failed = False
 
 
 def _get_rembg():
-    global _rembg_remove, _rembg_failed
+    global _rembg_remove, _rembg_session, _rembg_failed
     if _rembg_remove is None and not _rembg_failed:
         try:
-            from rembg import remove
+            from rembg import remove, new_session
 
             _rembg_remove = remove
+            # Pin u2net (176MB): model default rembg versi baru (bria, 1GB+)
+            # terlalu berat buat VPS kecil — pernah OOM.
+            _rembg_session = new_session("u2net")
         except Exception as e:  # noqa: BLE001 - dep opsional, jangan matikan bot
             _rembg_failed = True
             log.warning("rembg tidak bisa dipakai: %r", e)
     return _rembg_remove
+
+
+def _get_session():
+    _get_rembg()
+    return _rembg_session
 
 log = logging.getLogger("serbabot.tools")
 
@@ -101,7 +110,7 @@ def img_rmbg(src, dst):
     if remove is None:
         raise RuntimeError("rembg belum bisa dipakai di server ini")
     with Image.open(src) as im:
-        out = remove(im)
+        out = remove(im, session=_get_session())
         out.save(dst, "PNG")
 
 
