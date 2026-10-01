@@ -52,5 +52,30 @@ try:
 except ImportError:
     print("  SKIP rmbg (rembg tidak diinstall)")
 
+
+# --- rembg rusak/ngamuk: plugin tetap ke-import, bot tidak mati ---
+print("== rembg isolation ==")
+import importlib
+import plugins.tools as toolsmod
+
+
+class _BrokenRembg:
+    def __getattr__(self, name):
+        raise RuntimeError("simulasi rembg ngamuk")
+
+
+sys.modules["rembg"] = _BrokenRembg()
+importlib.reload(toolsmod)
+_t("plugin ke-import walau rembg rusak", True)
+_t("_get_rembg balikin None", toolsmod._get_rembg() is None)
+try:
+    toolsmod.img_rmbg("/tmp/x", "/tmp/y")
+    _t("img_rmbg raise ramah", False)
+except RuntimeError as e:
+    _t("img_rmbg raise ramah", "belum bisa dipakai" in str(e))
+del sys.modules["rembg"]
+importlib.reload(toolsmod)  # balikin normal
+print("ISOLATION OK")
+
 print("TOOLS OK" if not fails else "TOOLS FAIL: %s" % fails)
 sys.exit(1 if fails else 0)
