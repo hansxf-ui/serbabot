@@ -77,5 +77,123 @@ del sys.modules["rembg"]
 importlib.reload(toolsmod)  # balikin normal
 print("ISOLATION OK")
 
+# --- Replicate API (mock urlopen) ---
+print("== replicate rmbg ==")
+import io as _io
+import json as _json
+import urllib.request as _urlreq
+import urllib.error as _urlerr
+
+tools = toolsmod
+
+os.environ.pop("REPLICATE_API_TOKEN", None)
+try:
+    tools._replicate_rmbg("/tmp/x.jpg", "/tmp/y.png")
+    _t("tanpa token -> NO_REPLICATE_TOKEN", False)
+except RuntimeError as e:
+    _t("tanpa token -> NO_REPLICATE_TOKEN", str(e) == "NO_REPLICATE_TOKEN")
+
+os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
+
+_rep_src = "/tmp/rep_test_in.jpg"
+PILImage.new("RGB", (800, 600), "green").save(_rep_src, quality=90)
+
+
+class _FakeResp:
+    def __init__(self, data):
+        self._data = data
+
+    def read(self, *a):
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+_real_urlopen = _urlreq.urlopen
+_sent_bodies = []
+
+
+def _fake_ok(req, timeout=None):
+    url = req.full_url if isinstance(req, _urlreq.Request) else req
+    if url == tools.REPLICATE_API:
+        _sent_bodies.append(req.data)
+        return _FakeResp(_json.dumps(
+            {"id": "pred123", "status": "succeeded",
+             "output": "https://example.com/hasil.png"}).encode())
+    if url == "https://example.com/hasil.png":
+        return _FakeResp(b"\x89PNG\r\n\x1afake-png-bytes")
+    raise AssertionError("URL tak terduga: " + url)
+
+
+_urlreq.urlopen = _fake_ok
+try:
+    dst = "/tmp/rep_test_out.png"
+    if os.path.exists(dst):
+        os.remove(dst)
+    tools._replicate_rmbg("/tmp/rep_test_in.jpg", dst)
+    _t("sukses langsung (Prefer: wait)", os.path.exists(dst))
+    with open(dst, "rb") as f:
+        _t("isi hasil kepindah", f.read() == b"\x89PNG\r\n\x1afake-png-bytes")
+    body = _json.loads(_sent_bodies[0])
+    _t("kirim data-uri image", body["input"]["image"].startswith("data:image/jpeg;base64,"))
+finally:
+    _urlreq.urlopen = _real_urlopen
+
+
+# alur: processing -> poll 1x -> succeeded (output bentuk list)
+_poll_n = {"n": 0}
+
+
+def _fake_poll(req, timeout=None):
+    url = req.full_url if isinstance(req, _urlreq.Request) else req
+    if url == tools.REPLICATE_API:
+        return _FakeResp(_json.dumps({"id": "p1", "status": "processing"}).encode())
+    if url == "https://api.replicate.com/v1/predictions/p1":
+        _poll_n["n"] += 1
+        st = "processing" if _poll_n["n"] < 2 else "succeeded"
+        return _FakeResp(_json.dumps(
+            {"id": "p1", "status": st,
+             "output": ["https://example.com/h2.png"]}).encode())
+    if url == "https://example.com/h2.png":
+        return _FakeResp(b"png2")
+    raise AssertionError("URL tak terduga: " + url)
+
+
+_urlreq.urlopen = _fake_poll
+try:
+    dst2 = "/tmp/rep_test_out2.png"
+    if os.path.exists(dst2):
+        os.remove(dst2)
+    tools._replicate_rmbg("/tmp/rep_test_in.jpg", dst2, timeout=30)
+    _t("polling sampai succeeded", os.path.exists(dst2))
+    _t("output list di-unwrap", open(dst2, "rb").read() == b"png2")
+    _t("poll dipanggil", _poll_n["n"] >= 2)
+finally:
+    _urlreq.urlopen = _real_urlopen
+
+
+# 401 -> RuntimeError informatif
+def _fake_401(req, timeout=None):
+    raise _urlerr.HTTPError(req.full_url, 401, "Unauthorized", {},
+                            _io.BytesIO(b"invalid token"))
+
+
+_urlreq.urlopen = _fake_401
+try:
+    try:
+        tools._replicate_rmbg("/tmp/rep_test_in.jpg", "/tmp/zz.png")
+        _t("401 -> RuntimeError", False)
+    except RuntimeError as e:
+        _t("401 -> RuntimeError", "401" in str(e))
+finally:
+    _urlreq.urlopen = _real_urlopen
+
+os.environ.pop("REPLICATE_API_TOKEN", None)
+print("REPLICATE OK")
+
 print("TOOLS OK" if not fails else "TOOLS FAIL: %s" % fails)
 sys.exit(1 if fails else 0)
