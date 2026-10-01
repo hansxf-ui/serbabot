@@ -1,9 +1,61 @@
 # SerbaBot
 
-Bot Telegram multi-fitur. Phase 1: anon-chat (ngobrol anonim 1 lawan 1).
-Phase 2: downloader video (TikTok/IG Reels/YouTube/X/Facebook).
+Bot Telegram multi-fitur: anon chat, downloader, tools foto/video, AI chat,
+koin & daily check-in, kuis, game grup, primbon, jadwal sholat, dan banyak lagi.
+Lihat daftar lengkap: kirim `/help` ke bot.
 
-## Plugin downloader
+## Daftar fitur & perintah
+
+| Plugin | Perintah | Jatah gratis |
+|---|---|---|
+| koin | `/checkin` (koin harian + streak 🔥), `/koin` (saldo & riwayat) | tanpa batas |
+| kuis | `/kuis` (kuis harian, jawaban benar +5 koin), `/top` (leaderboard) | 3/hari |
+| kuisai | `/kuisai <topik>` (kuis bikinan AI, jawaban benar +5 koin) | 2/hari |
+| tod | `/tod` (truth or dare, grup & private) | 10/hari |
+| menfess | `/menfess <teks>` (kirim anonim ke channel) | 3/hari |
+| referral | `/invite` (link referral: L1 +100 koin, L2 +20 koin, 5 teman = 7 hari Premium) | — |
+| aichat | `/ai <tanya>` | 5/hari |
+| persona | `/persona` (pilih: Kak Curhat, Tutor Santai, Bang Roleplay, Mbah Primbon — AI ingat nama & fakta user) | 20/hari |
+| rangkum | `/rangkum <url>` (ringkas artikel jadi 5 poin) | 5/hari |
+| voice | `/vn <teks>` (teks → voice note id), kirim VN → transkrip teks | 3/hari (gabung) |
+| primbon | `/zodiak <tgl>`, `/weton <tgl>` (Jumat Legi dst.), `/jodoh <tgl1> <tgl2>` | 30/hari |
+| sholat | `/sholat <kota>`, `/sholatset <kota>` (pengingat 5 mnt sebelum), `/sholatstop` | 20/hari |
+| skor | `/skor`, `/tebak <id> <skor>` (10 koin, tepat = +50 koin; BUKAN judi) | dibatasi koin |
+| gacha | `/gacha` (1 gratis/hari), `/gachaplus` (50 koin/pull), `/koleksi` | 1 gratis/hari |
+| meme | `/meme` (reply foto + `atas\|bawah`), `/stiker` (reply foto → stiker) | 10/hari & 5/hari |
+| fotofun | `/memein` (reply foto → template lucu, tanpa face detection) | 20 koin/generate |
+| grup | welcome member, anti-spam kata kasar/link, `/statistik` | — |
+| resi | `/resi <nomor>` (butuh API key agregator) | 3/hari |
+| paidmedia | `/katalog` (konten eksklusif via Stars) | dibatasi Stars |
+| premium | `/premium` (50 ⭐ ±Rp12rb / 100 ⭐ ±Rp23rb per 30 hari, via Telegram Stars) | — |
+| downloader | kirim link TikTok/IG/YouTube, `/dl <link>` | 5/hari |
+| tools | kirim foto/video (PDF, convert, kompres, hapus background, potong) | 5/hari |
+| imagegen | `/gambar <deskripsi>` | 3/hari |
+
+VIP (admin atau premium aktif) = semua jatah unlimited, kecuali yang
+sengaja dibatasi koin (skor, gachaplus, memein — itu desain ekonomi koin).
+
+## Catatan deploy per fitur
+
+- **menfess**: set `MENFESS_CHANNEL_ID` (ID channel, mis. `-100123...`). Tanpa
+  ini `/menfess` menolak dengan jujur.
+- **skor**: `FOOTBALL_API_KEY` opsional (football-data.org). Tanpa ini,
+  settlement manual via `/addmatch` & `/setresult` (admin).
+- **resi**: `RESI_PROVIDER` (`binderbyte` default / `custom`), `RESI_API_KEY`,
+  `RESI_API_URL` (wajib kalau provider `custom`). Tanpa API key, `/resi`
+  balas jujur "butuh API key agregator". Tidak ada API cek resi gratis tanpa
+  key yang andal — ini batasan yang diketahui.
+- **voice**: butuh `pip install edge-tts` (sudah di requirements.txt). Tanpa
+  modulnya, `/vn` balas "belum aktif di server" tapi bot tetap jalan.
+- **grup**: bot harus jadi **admin grup** (izin hapus pesan) + **privacy mode
+  OFF** (BotFather → `/setprivacy` → Disable) supaya baca pesan grup.
+- **sholat**: langganan tersimpan di DB dan di-restore otomatis saat bot
+  restart (job dijadwalkan ulang di `register()`).
+- **premium**: bayar via Telegram Stars (`sendInvoice` currency XTR) —
+  satu-satunya cara bayar digital yang diizinkan Telegram untuk bot.
+  Tidak ada lagi jalur QRIS/DANA manual.
+
+## Plugin downloader (lama)
 
 Kirim link video langsung ke bot, atau pakai `/dl <link>`.
 
