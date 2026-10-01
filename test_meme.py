@@ -59,6 +59,7 @@ class FakeMessage:
     def __init__(self):
         self.replies = []
         self.photos = []
+        self.stickers = []
         self.reply_to_message = None
 
     async def reply_text(self, text, **kw):
@@ -66,6 +67,11 @@ class FakeMessage:
 
     async def reply_photo(self, photo, **kw):
         self.photos.append(photo)
+
+    async def reply_sticker(self, sticker, **kw):
+        if hasattr(sticker, "seek"):
+            sticker.seek(0)
+        self.stickers.append(sticker.read())
 
 
 class FakeReplyMsg:
@@ -196,8 +202,15 @@ _t("/stiker pertama: emoji default 🙂",
    list(bot.calls[0][4][0].emoji_list) == ["🙂"])
 row = conn.execute("SELECT set_name FROM meme_sets WHERE user_id=777").fetchone()
 _t("/stiker pertama: set tercatat di DB", row and row[0] == "serba_777_by_testbot")
-_t("/stiker pertama: pesan sukses",
-   any("Stiker ditambahkan" in r for r in u1.message.replies))
+_t("/stiker pertama: pesan sukses + link addstickers",
+   any("Pack stiker lu jadi" in r for r in u1.message.replies)
+   and any("t.me/addstickers/serba_777_by_testbot" in r
+           for r in u1.message.replies))
+_t("/stiker pertama: stiker dikirim balik ke chat (real-time)",
+   len(u1.message.stickers) == 1)
+_stback = Image.open(io.BytesIO(u1.message.stickers[0]))
+_t("/stiker pertama: stiker di chat PNG 512 valid",
+   max(_stback.size) == 512 and _stback.format == "PNG")
 # stiker yang dikirim = PNG max 512 (InputSticker bungkus BytesIO di InputFile)
 _raw = bot.calls[0][4][0].sticker.input_file_content
 stimg = Image.open(io.BytesIO(_raw))
@@ -209,6 +222,10 @@ asyncio.run(meme.stiker_cmd(u2, ctx8))
 _t("/stiker kedua: add_sticker_to_set (bukan create lagi)",
    len(bot.calls) == 2 and bot.calls[1][0] == "add"
    and bot.calls[1][2] == "serba_777_by_testbot")
+_t("/stiker kedua: stiker dikirim balik ke chat",
+   len(u2.message.stickers) == 1)
+_t("/stiker kedua: tidak kirim link lagi",
+   not any("addstickers" in r for r in u2.message.replies))
 _t("/stiker: jatah kepotong 2", db.get_quota_today(conn, "stiker", 777) == 2)
 
 # 9. /stiker tanpa reply foto -> cara pakai
