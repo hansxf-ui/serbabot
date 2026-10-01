@@ -113,6 +113,10 @@ class FakeBot:
     async def get_sticker_set(self, name):
         return FakeStickerSet(name, "Stiker Test", 8)
 
+    async def set_sticker_set_title(self, name, title):
+        self.title_touched = (name, title)
+        return True
+
     async def create_new_sticker_set(self, user_id, name, title, stickers, **kw):
         self.calls.append(("create", user_id, name, title, stickers))
         return True
@@ -359,6 +363,14 @@ u19.message.replies.clear()
 asyncio.run(meme.cekpack_cmd(u19, FakeContext(conn, bot=FakeBot())))
 _t("/cekpack: non-admin ditolak",
    any("Khusus admin" in r for r in u19.message.replies))
+
+# 20. /stiker: judul pack "disentuh" biar client refresh
+conn = db.init_db(":memory:")
+bot20 = FakeBot()
+u20 = FakeUpdate(7, own_photo_data=photo)
+asyncio.run(meme.stiker_cmd(u20, FakeContext(conn, bot=bot20)))
+_t("/stiker: judul disentuh (set_sticker_set_title dipanggil)",
+   getattr(bot20, "title_touched", None) is not None)
 
 print("MEME " + ("OK" if not fails else "GAGAL: %s" % fails))
 sys.exit(1 if fails else 0)
