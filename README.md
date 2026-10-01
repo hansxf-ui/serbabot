@@ -1,6 +1,20 @@
 # SerbaBot
 
 Bot Telegram multi-fitur. Phase 1: anon-chat (ngobrol anonim 1 lawan 1).
+Phase 2: downloader video (TikTok/IG Reels/YouTube/X/Facebook).
+
+## Plugin downloader
+
+Kirim link video langsung ke bot, atau pakai `/dl <link>`.
+
+- Format otomatis `best[filesize<45M]/best` (limit file bot Telegram 50MB).
+- File >45MB atau link gagal → pesan ramah Bahasa Indonesia, bukan error mentah.
+- **Freemium:** user gratis = 5 download/hari (dihitung per user per tanggal).
+  Premium (`users.is_premium=1`) = unlimited. Cek sisa jatah: nggak ada command
+  khusus — kalau habis, bot kasih tahu + arahin ke `/premium`.
+- File sementara di `/tmp`, dihapus setelah terkirim.
+- Tidak mengganggu sesi anonchat: kalau user lagi ngobrol anonim, link yang
+  dikirim tetap diteruskan sebagai chat biasa (bukan di-download).
 
 ## Struktur
 
@@ -10,15 +24,18 @@ serbabot/
 ├── db.py                   # SQLite helpers (stdlib)
 ├── plugins/
 │   ├── __init__.py
-│   └── anonchat/           # plugin phase 1
-│       ├── __init__.py     # register(app, db): daftarkan handler
-│       ├── pairing.py      # logika antrean/pairing (murni, testable)
-│       ├── filtering.py    # filter kata kasar (stdlib)
-│       └── badwords.txt    # daftar kata (satu per baris, bisa ditambah)
-├── requirements.txt
+│   ├── anonchat/           # plugin phase 1
+│   │   ├── __init__.py     # register(app, db): daftarkan handler
+│   │   ├── pairing.py      # logika antrean/pairing (murni, testable)
+│   │   ├── filtering.py    # filter kata kasar (stdlib)
+│   │   └── badwords.txt    # daftar kata (satu per baris, bisa ditambah)
+│   └── downloader/         # plugin phase 2
+│       └── __init__.py     # register(app, db): /dl + deteksi URL, limit harian
+├── requirements.txt        # python-telegram-bot + yt-dlp
 ├── serbabot.service        # systemd unit buat VPS
 ├── INSTALL.md              # panduan install di VPS
-└── test_pairing.py         # unit test tanpa network
+├── test_pairing.py         # unit test tanpa network
+└── test_downloader.py      # unit test limit harian (tanpa network)
 ```
 
 ## Jalanin lokal
@@ -39,25 +56,25 @@ Test logika (tanpa network, tanpa token):
 
 ```bash
 python3 test_pairing.py
+python3 test_downloader.py
 ```
 
 ## Cara nambah plugin baru
 
-Bikin modul di `plugins/`, misal `plugins/downloader.py`, dengan fungsi:
+Bikin modul di `plugins/`, misal `plugins/tools/`, dengan fungsi:
 
 ```python
 def register(app, db):
-    app.add_handler(CommandHandler("dl", download_cmd))
+    app.add_handler(CommandHandler("ping", ping_cmd))
 ```
 
 Core otomatis load semua modul di `plugins/` yang punya `register(app, db)`.
-`db` = koneksi sqlite3 (tabel `users`, `reports` sudah ada). `app.bot_data["admin_id"]`
-bisa dibaca kalau plugin butuh.
+`db` = koneksi sqlite3 (tabel `users`, `reports`, `downloads` sudah ada).
+`app.bot_data["admin_id"]` bisa dibaca kalau plugin butuh.
 
-Contoh buat phase 2 (downloader): `plugins/downloader/__init__.py` + fungsi
-`register` yang daftarkan `/dl <url>` → download → kirim file. Cek
-`is_premium` user via `SELECT is_premium FROM users WHERE user_id=?` buat batasi
-fitur gratis vs premium.
+Contoh nyata: `plugins/downloader/__init__.py` (deteksi URL + `/dl`,
+cek sesi anonchat via `plugins.anonchat.is_in_session`, batasi fitur
+gratis vs premium via `db.is_premium` / `db.get_downloads_today`).
 
 ## Keputusan desain
 
