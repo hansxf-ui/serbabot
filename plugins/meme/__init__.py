@@ -203,6 +203,7 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     row = conn.execute(
         "SELECT set_name FROM meme_sets WHERE user_id=?", (user.id,)
     ).fetchone()
+    set_used = row[0] if row else set_name
     try:
         if row:
             await context.bot.add_sticker_to_set(user.id, row[0], sticker)
@@ -223,8 +224,12 @@ async def stiker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Set-nya memang sudah jadi di server Telegram, tapi tidak otomatis
+    # nongol di menu stiker user — user harus buka link addstickers sekali.
     await update.message.reply_text(
-        "Stiker ditambahkan ke set lu! 🎉\nCek di menu stiker Telegram."
+        "Stiker ditambahkan ke set lu! 🎉\n"
+        "Biar muncul di menu stiker, klik link ini sekali:\n"
+        "https://t.me/addstickers/%s" % set_used
     )
     if not vip:
         inc_quota_today(conn, "stiker", user.id)
