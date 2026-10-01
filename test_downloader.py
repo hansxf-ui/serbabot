@@ -161,16 +161,19 @@ finally:
     __import__("os").path.exists = orig_exists
 
 # --- situs diparkir: dibalas pesan jelas, tidak di-download, tidak makan jatah ---
+# YouTube & Instagram SUDAH dibuka (tidak diparkir). FB & X tetap diparkir.
 print("== parked ==")
 import asyncio
 import plugins.downloader as dlmod3
 from plugins.downloader import _is_parked, _is_tiktok
 
-_t("youtube.com diparkir", _is_parked("https://www.youtube.com/watch?v=abc"))
-_t("youtu.be diparkir", _is_parked("https://youtu.be/abc"))
-_t("instagram diparkir", _is_parked("https://www.instagram.com/reel/abc/"))
-_t("facebook diparkir", _is_parked("https://www.facebook.com/share/r/abc/"))
-_t("x diparkir", _is_parked("https://x.com/user/status/123"))
+_t("youtube.com TIDAK diparkir", not _is_parked("https://www.youtube.com/watch?v=abc"))
+_t("youtu.be TIDAK diparkir", not _is_parked("https://youtu.be/abc"))
+_t("instagram TIDAK diparkir", not _is_parked("https://www.instagram.com/reel/abc/"))
+_t("facebook tetap diparkir", _is_parked("https://www.facebook.com/share/r/abc/"))
+_t("fb.watch tetap diparkir", _is_parked("https://fb.watch/abc/"))
+_t("x tetap diparkir", _is_parked("https://x.com/user/status/123"))
+_t("twitter tetap diparkir", _is_parked("https://twitter.com/user/status/123"))
 _t("tiktok TIDAK diparkir", not _is_parked("https://www.tiktok.com/@a/video/123"))
 _t("tiktok kedeteksi", _is_tiktok("https://www.tiktok.com/@a/video/123"))
 
@@ -215,21 +218,52 @@ dlmod3.is_premium = lambda *a: False
 dlmod3.quota_ok = lambda *a: True
 dlmod3.yt_dlp.YoutubeDL = FakeYDL3
 try:
+    # FB masih diparkir: yt-dlp tidak dipanggil, dibalas pesan parkir
     u = _Upd()
-    asyncio.run(dlmod3._download_flow(u, _Ctx(), "https://youtu.be/abc123"))
-    _t("yt-dlp tidak dipanggil", fetch_calls == [])
-    _t("dibalas pesan parkir", any("diparkir" in t for t in u.message.texts))
-    # link non-parkir tetap jalan normal (yt-dlp dipanggil)
+    asyncio.run(dlmod3._download_flow(u, _Ctx(), "https://www.facebook.com/share/r/abc/"))
+    _t("fb: yt-dlp tidak dipanggil", fetch_calls == [])
+    _t("fb: dibalas pesan parkir", any("diparkir" in t for t in u.message.texts))
+    # X masih diparkir
+    u = _Upd()
+    asyncio.run(dlmod3._download_flow(u, _Ctx(), "https://x.com/user/status/123"))
+    _t("x: yt-dlp tidak dipanggil", fetch_calls == [])
+    _t("x: dibalas pesan parkir", any("diparkir" in t for t in u.message.texts))
+    # YouTube sudah dibuka: yt-dlp dipanggil, tanpa pesan parkir
     fetch_calls.clear()
     orig_exists3 = __import__("os").path.exists
     __import__("os").path.exists = lambda p: True
     u2 = _Upd()
     try:
-        asyncio.run(dlmod3._download_flow(u2, _Ctx(), "https://www.tiktok.com/@a/video/123"))
+        asyncio.run(dlmod3._download_flow(u2, _Ctx(), "https://youtu.be/abc123"))
     except Exception:
         pass  # kirim video butuh objek telegram asli; cukup pastikan _fetch kepanggil
     finally:
         __import__("os").path.exists = orig_exists3
+    _t("youtube: yt-dlp dipanggil", len(fetch_calls) == 1)
+    _t("youtube: tanpa pesan parkir", not any("diparkir" in t for t in u2.message.texts))
+    # Instagram sudah dibuka: yt-dlp dipanggil
+    fetch_calls.clear()
+    orig_exists4 = __import__("os").path.exists
+    __import__("os").path.exists = lambda p: True
+    u3 = _Upd()
+    try:
+        asyncio.run(dlmod3._download_flow(u3, _Ctx(), "https://www.instagram.com/reel/abc/"))
+    except Exception:
+        pass
+    finally:
+        __import__("os").path.exists = orig_exists4
+    _t("instagram: yt-dlp dipanggil", len(fetch_calls) == 1)
+    # link non-parkir tetap jalan normal (yt-dlp dipanggil)
+    fetch_calls.clear()
+    orig_exists5 = __import__("os").path.exists
+    __import__("os").path.exists = lambda p: True
+    u4 = _Upd()
+    try:
+        asyncio.run(dlmod3._download_flow(u4, _Ctx(), "https://www.tiktok.com/@a/video/123"))
+    except Exception:
+        pass  # kirim video butuh objek telegram asli; cukup pastikan _fetch kepanggil
+    finally:
+        __import__("os").path.exists = orig_exists5
     _t("tiktok tetap coba download", len(fetch_calls) == 1)
     print("PARKED OK")
 finally:
@@ -237,6 +271,54 @@ finally:
     dlmod3.is_premium = orig_premium
     dlmod3.quota_ok = orig_quota
     dlmod3.yt_dlp.YoutubeDL = orig_ydl
+
+# --- cookiefile: env YTDL_COOKIES diteruskan ke yt-dlp, tanpa env = tanpa cookies ---
+print("== cookies ==")
+import os as _os
+cookie_calls = []
+class FakeYDLCookie:
+    def __init__(self, opts):
+        cookie_calls.append(dict(opts))
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+    def extract_info(self, url, download=True):
+        return {"id": "x", "ext": "mp4", "title": "t"}
+    def prepare_filename(self, info):
+        return "/tmp/fake.mp4"
+
+orig_ydl_c = dlmod3.yt_dlp.YoutubeDL
+orig_exists_c = _os.path.exists
+orig_env_c = _os.environ.get("YTDL_COOKIES")
+dlmod3.yt_dlp.YoutubeDL = FakeYDLCookie
+try:
+    # env di-set + file ada -> cookiefile diteruskan
+    _os.environ["YTDL_COOKIES"] = "/tmp/cookies_test.txt"
+    _os.path.exists = lambda p: p in ("/tmp/fake.mp4", "/tmp/cookies_test.txt")
+    cookie_calls.clear()
+    dlmod3._fetch("https://youtu.be/abc")
+    _t("env YTDL_COOKIES -> cookiefile diteruskan",
+       cookie_calls[0].get("cookiefile") == "/tmp/cookies_test.txt")
+    # env tidak di-set -> tanpa cookies
+    del _os.environ["YTDL_COOKIES"]
+    _os.path.exists = lambda p: p == "/tmp/fake.mp4"
+    cookie_calls.clear()
+    dlmod3._fetch("https://youtu.be/abc")
+    _t("tanpa env -> tanpa cookiefile", "cookiefile" not in cookie_calls[0])
+    # env di-set tapi file tidak ada -> tanpa cookies (tidak error)
+    _os.environ["YTDL_COOKIES"] = "/tmp/tidak_ada.txt"
+    cookie_calls.clear()
+    dlmod3._fetch("https://youtu.be/abc")
+    _t("file cookies tidak ada -> tanpa cookiefile", "cookiefile" not in cookie_calls[0])
+    print("COOKIES OK")
+finally:
+    dlmod3.yt_dlp.YoutubeDL = orig_ydl_c
+    _os.path.exists = orig_exists_c
+    if orig_env_c is None:
+        _os.environ.pop("YTDL_COOKIES", None)
+    else:
+        _os.environ["YTDL_COOKIES"] = orig_env_c
 
 # --- timeout: _fetch yang gantung -> user dapat pesan, bukan digantung ---
 print("== timeout ==")
@@ -259,3 +341,6 @@ finally:
     dlmod3.upsert_user = orig_upsert
     dlmod3.is_premium = orig_premium
     dlmod3.quota_ok = orig_quota
+
+_t("FETCH_TIMEOUT tetap 180 detik", dlmod3.FETCH_TIMEOUT == 180)
+print("\nSEMUA BAGIAN SELESAI")
