@@ -1,13 +1,17 @@
-"""Plugin AI chat: /ai <pertanyaan> — tanya AI gratis via Pollinations.ai.
+"""Plugin AI chat: /ai <pertanyaan>.
 
-Tanpa API key. Jatah gabung dengan downloader & tools: 5/hari gratis,
-premium unlimited. Jatah cuma kepotong kalau AI-nya beneran jawab
-(timeout/error nggak makan jatah).
+Prioritas: Gemini (gratis 1500x/hari, akurat) kalau GEMINI_API_KEY di-set,
+fallback ke Pollinations.ai (tanpa key, tapi modelnya kadang ngawur).
+
+Jatah gabung dengan downloader & tools: 5/hari gratis, premium unlimited.
+Jatah cuma kepotong kalau AI-nya beneran jawab (timeout/error nggak makan
+jatah).
 """
 
 import asyncio
 import json
 import logging
+import os
 import urllib.request
 
 from telegram import Update
@@ -28,7 +32,11 @@ log = logging.getLogger("serbabot.aichat")
 
 DAILY_FREE_LIMIT = 5
 AI_TIMEOUT = 60  # detik
-AI_API = "https://text.pollinations.ai/"
+POLL_API = "https://text.pollinations.ai/"
+GEMINI_API = (
+    "https://generativelanguage.googleapis.com/v1beta/"
+    "models/gemini-2.0-flash:generateContent"
+)
 MAX_REPLY = 3500  # Telegram max 4096; potong biar aman
 
 SYSTEM_PROMPT = (
@@ -38,10 +46,36 @@ SYSTEM_PROMPT = (
 )
 
 
-def _ask_ai(question):
-    """Blocking: tanya Pollinations.ai (POST JSON OpenAI-style), return teks
-    jawaban. Dipanggil via to_thread biar event loop nggak ke-block.
-    Model 'openai' — model default gratisannya halu parah, yang ini akurat."""
+def _ask_gemini(question, api_key):
+    """Blocking: tanya Gemini 2.0 Flash (REST, tanpa SDK). Raise kalau gagal."""
+    body = json.dumps(
+        {
+            "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{"role": "user", "parts": [{"text": question}]}],
+            "generationConfig": {"maxOutputTokens": 1000},
+        }
+    ).encode()
+    req = urllib.request.Request(
+        GEMINI_API,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as r:
+        payload = json.loads(r.read().decode("utf-8", errors="replace"))
+    cands = payload.get("candidates") or []
+    parts = (cands[0].get("content") or {}).get("parts") or [] if cands else []
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        raise RuntimeError("Gemini: jawaban kosong")
+    return text
+
+
+def _ask_pollinations(question):
+    """Blocking: tanya Pollinations.ai (POST JSON OpenAI-style)."""
     body = json.dumps(
         {
             "model": "openai",
@@ -52,13 +86,25 @@ def _ask_ai(question):
         }
     ).encode()
     req = urllib.request.Request(
-        AI_API,
+        POLL_API,
         data=body,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as r:
         return r.read().decode("utf-8", errors="replace").strip()
+
+
+def _ask_ai(question):
+    """Blocking: Gemini dulu (kalau ada key), fallback ke Pollinations.
+    Dipanggil via to_thread biar event loop nggak ke-block."""
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        try:
+            return _ask_gemini(question, gemini_key)
+        except Exception as e:  # noqa: BLE001 - jatuh ke fallback
+            log.warning("gemini gagal, fallback ke pollinations: %s", e)
+    return _ask_pollinations(question)
 
 
 async def ai_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
