@@ -23,14 +23,15 @@ python3 -m venv venv
 > seperti di atas — jangan pakai `sudo pip`.
 
 > `requirements.txt` sudah mencakup `yt-dlp` (downloader), `pillow` (tools),
-> dan `rembg` (tools hapus background).
-> `ffmpeg` opsional tapi disarankan — tanpa ffmpeg, yt-dlp kadang nggak bisa
-> gabung video+audio kualitas tertinggi. Install kalau mau:
+> dan `rembg[cpu]` (tools hapus background).
+> `ffmpeg` **WAJIB** untuk tools video (kompres / convert MP4 / potong).
+> Tanpa ffmpeg, tools video nonaktif sendiri (bot tetap jalan).
+> Install di VPS:
 > `sudo apt install -y ffmpeg`
 >
-> Catatan `rembg`: dipakai sebagai fallback kalau API mati. Model AI ~176MB
-> diunduh otomatis saat pertama dipakai (butuh internet, agak lama).
-> Proses di CPU.
+> Catatan `rembg`: dipakai sebagai fallback kalau API mati. Model AI u2net
+> ~176MB diunduh otomatis saat pertama dipakai (butuh internet, agak lama).
+> Proses di CPU (hitungan detik per foto).
 
 ## 2. Isi token & admin ID
 
@@ -44,12 +45,19 @@ Isi file-nya (ganti dengan punyamu):
 BOT_TOKEN=xxxx_dari_BotFather
 ADMIN_ID=123456789
 REPLICATE_API_TOKEN=r8_xxxxxxxxxxxxxxxx
+YTDL_COOKIES=/opt/serbabot/cookies.txt
 ```
 
 `REPLICATE_API_TOKEN` = buat hapus background yang cepat (~4 detik, GPU).
 Daftar gratis di https://replicate.com (dapat $25 kredit, tanpa kartu kredit),
 lalu ambil token di https://replicate.com/account/api-tokens.
-Kalau dikosongkan, bot pakai rembg lokal (gratis tapi lambat, hitungan menit).
+Kalau dikosongkan, bot pakai rembg lokal (gratis, ~1-2 detik/foto).
+
+`YTDL_COOKIES` = opsional, path ke file cookies.txt buat downloader YouTube/
+Instagram biar nggak kena blokir bot. Cara isi: buka youtube.com di browser
+HP (Lemur Browser), export cookies pakai ekstensi "Get cookies.txt LOCALLY",
+lalu upload file-nya ke VPS. Kalau dikosongkan, downloader tetap jalan tapi
+kadang gagal.
 
 Simpan: `Ctrl+O`, `Enter`, `Ctrl+X`. Lalu kunci permission-nya:
 
