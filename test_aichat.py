@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -159,44 +160,121 @@ asyncio.run(aichat.ai_cmd(upd6, FakeContext(conn, ["halo"])))
 _t("premium: tetap dilayani walau jatah penuh", http_calls != [])
 _t("premium: jawaban sampai", upd6.message.edits == ["Jawaban AI: halo!"])
 
-# 7. Gemini: key di-set -> pakai Gemini, parsing candidates benar
+# 7. Gemini: key di-set -> discovery dulu, lalu generate via model terbaru
 GEMINI_JSON = json.dumps({"candidates": [{"content": {"parts": [
     {"text": "Jawaban Gemini: halo!"}, {"text": " Lanjutan."}]}}]})
+DISCOVERY_JSON = json.dumps({"models": [
+    {"name": "models/gemini-2.0-flash",
+     "supportedGenerationMethods": ["generateContent"]},
+    {"name": "models/gemini-2.5-flash",
+     "supportedGenerationMethods": ["generateContent"]},
+    {"name": "models/gemini-2.5-pro",
+     "supportedGenerationMethods": ["generateContent"]},
+    {"name": "models/text-embedding-004",
+     "supportedGenerationMethods": ["embedContent"]},
+]})
 
-def fake_gemini(req, timeout=None):
+gen_calls = []
+
+def fake_gemini_discovery(req, timeout=None):
+    if req.data is None:  # GET = discovery
+        captured["d_url"] = req.full_url
+        captured["d_key"] = req.get_header("X-goog-api-key")
+        captured["d_method"] = req.get_method()
+        return FakeResp(DISCOVERY_JSON)
+    gen_calls.append(req.full_url)
     captured["g_url"] = req.full_url
     captured["g_key"] = req.get_header("X-goog-api-key")
     captured["g_body"] = json.loads(req.data.decode())
     return FakeResp(GEMINI_JSON)
 
 os.environ["GEMINI_API_KEY"] = "TESTKEY123"
-urllib.request.urlopen = fake_gemini
+aichat._GEMINI_MODEL_CACHE = None
+urllib.request.urlopen = fake_gemini_discovery
 upd7 = FakeUpdate(777)
 asyncio.run(aichat.ai_cmd(upd7, FakeContext(conn, ["halo"])))
-_t("gemini: endpoint benar", captured.get("g_url") == aichat.GEMINI_API)
-_t("gemini: api key kekirim", captured.get("g_key") == "TESTKEY123")
+_t("gemini: discovery ke /v1beta/models",
+   captured.get("d_url") == aichat.GEMINI_API_BASE
+   and captured.get("d_method") == "GET")
+_t("gemini: api key kekirim di discovery", captured.get("d_key") == "TESTKEY123")
+_t("gemini: pilih flash versi tertinggi (bukan pro/embedding)",
+   captured.get("g_url") == aichat.GEMINI_API_BASE + "/gemini-2.5-flash:generateContent")
+_t("gemini: api key kekirim di generate", captured.get("g_key") == "TESTKEY123")
 _t("gemini: pertanyaan kekirim",
    captured.get("g_body", {}).get("contents", [{}])[0]
    .get("parts", [{}])[0].get("text") == "halo")
 _t("gemini: jawaban digabung & diteruskan",
    upd7.message.edits == ["Jawaban Gemini: halo! Lanjutan."])
 _t("gemini: jatah kepotong", db.get_downloads_today(conn, 777) == 1)
+_t("gemini: cuma 1x generate (model pertama langsung OK)", len(gen_calls) == 1)
 
-# 8. Gemini gagal -> fallback ke Pollinations
-calls8 = {"n": 0}
+# 8. Model 404 (pensiun) di-skip, lanjut ke model berikutnya
+tried8 = []
 
-def fake_gemini_then_poll(req, timeout=None):
-    calls8["n"] += 1
-    if calls8["n"] == 1:
-        raise RuntimeError("gemini down")
-    return FakeResp("Jawaban fallback: halo!")
+def fake_gemini_404_skip(req, timeout=None):
+    if req.data is None:
+        return FakeResp(DISCOVERY_JSON)
+    tried8.append(req.full_url)
+    if "gemini-2.5-flash" in req.full_url:
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+    return FakeResp(GEMINI_JSON)
 
-urllib.request.urlopen = fake_gemini_then_poll
+aichat._GEMINI_MODEL_CACHE = None
+urllib.request.urlopen = fake_gemini_404_skip
 upd8 = FakeUpdate(888)
 asyncio.run(aichat.ai_cmd(upd8, FakeContext(conn, ["halo"])))
+_t("404: model pensiun dicoba lalu di-skip",
+   len(tried8) == 2
+   and "gemini-2.5-flash:generateContent" in tried8[0]
+   and "gemini-2.0-flash:generateContent" in tried8[1])
+_t("404: jawaban dari model pengganti sampai",
+   upd8.message.edits == ["Jawaban Gemini: halo! Lanjutan."])
+_t("404: jatah kepotong", db.get_downloads_today(conn, 888) == 1)
+
+# 9. Discovery di-cache: 2x tanya cuma 1x GET models
+aichat._GEMINI_MODEL_CACHE = None
+d_calls = {"n": 0}
+
+def fake_discovery_count(req, timeout=None):
+    if req.data is None:
+        d_calls["n"] += 1
+        return FakeResp(DISCOVERY_JSON)
+    return FakeResp(GEMINI_JSON)
+
+urllib.request.urlopen = fake_discovery_count
+aichat._ask_gemini("halo", "K")
+aichat._ask_gemini("halo", "K")
+_t("discovery: di-cache per proses", d_calls["n"] == 1)
+
+# 10. Discovery gagal -> pakai cascade hardcoded
+aichat._GEMINI_MODEL_CACHE = None
+
+def fake_discovery_fail(req, timeout=None):
+    if req.data is None:
+        raise RuntimeError("network blip")
+    captured["c_url"] = req.full_url
+    return FakeResp(GEMINI_JSON)
+
+urllib.request.urlopen = fake_discovery_fail
+aichat._ask_gemini("halo", "K")
+_t("cascade: fallback ke gemini-2.5-flash",
+   captured.get("c_url") == aichat.GEMINI_API_BASE + "/gemini-2.5-flash:generateContent")
+
+# 11. Semua model Gemini 404 -> fallback ke Pollinations
+aichat._GEMINI_MODEL_CACHE = None
+
+def fake_all_404_then_poll(req, timeout=None):
+    if req.full_url == "https://text.pollinations.ai/":
+        return FakeResp("Jawaban fallback: halo!")
+    if req.data is None:
+        return FakeResp(DISCOVERY_JSON)
+    raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+urllib.request.urlopen = fake_all_404_then_poll
+upd11 = FakeUpdate(999)
+asyncio.run(aichat.ai_cmd(upd11, FakeContext(conn, ["halo"])))
 _t("fallback: jawaban pollinations sampai",
-   upd8.message.edits == ["Jawaban fallback: halo!"])
-_t("fallback: 2x HTTP (gemini gagal + pollinations)", calls8["n"] == 2)
+   upd11.message.edits == ["Jawaban fallback: halo!"])
 
 del os.environ["GEMINI_API_KEY"]
 urllib.request.urlopen = real_urlopen
