@@ -61,6 +61,12 @@ def _fetch(url):
         "no_warnings": True,
         "noplaylist": True,
     }
+    # TikTok memblokir IP datacenter; cookies dari sesi login asli mengatasinya.
+    # Taruh file cookies (format Netscape) di /opt/serbabot/cookies.txt
+    # atau set env SERBABOT_COOKIES ke path lain.
+    cookie_file = os.environ.get("SERBABOT_COOKIES", "/opt/serbabot/cookies.txt")
+    if os.path.exists(cookie_file):
+        opts["cookiefile"] = cookie_file
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         path = ydl.prepare_filename(info)
