@@ -91,3 +91,16 @@ pairing.stop(22)
 check("setelah stop -> keluar sesi", is_in_session(11) is False)
 
 print(f"\nSEMUA {passed} TEST HIJAU")
+
+# --- tambahan: deteksi tiktok & fallback ---
+from plugins.downloader import _is_tiktok
+
+def _t(name, cond):
+    print(("  PASS " if cond else "  FAIL ") + name)
+    assert cond, name
+
+_t("tiktok terdeteksi", _is_tiktok("https://vm.tiktok.com/ZSbUquTqk/"))
+_t("tiktok www terdeteksi", _is_tiktok("https://www.tiktok.com/@a/video/123"))
+_t("youtube bukan tiktok", not _is_tiktok("https://youtu.be/abc"))
+_t("ig bukan tiktok", not _is_tiktok("https://www.instagram.com/reel/abc/"))
+print("TAMBAHAN OK")
