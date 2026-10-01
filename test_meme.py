@@ -96,12 +96,22 @@ class FakeMe:
     username = "testbot"
 
 
+class FakeStickerSet:
+    def __init__(self, name, title, n):
+        self.name = name
+        self.title = title
+        self.stickers = [object() for _ in range(n)]
+
+
 class FakeBot:
     def __init__(self):
         self.calls = []
 
     async def get_me(self):
         return FakeMe()
+
+    async def get_sticker_set(self, name):
+        return FakeStickerSet(name, "Stiker Test", 8)
 
     async def create_new_sticker_set(self, user_id, name, title, stickers, **kw):
         self.calls.append(("create", user_id, name, title, stickers))
@@ -113,9 +123,9 @@ class FakeBot:
 
 
 class FakeContext:
-    def __init__(self, conn, args=None, bot=None):
+    def __init__(self, conn, args=None, bot=None, admin_id=None):
         self.args = args or []
-        self.bot_data = {"db": conn, "admin_id": None}
+        self.bot_data = {"db": conn, "admin_id": admin_id}
         self.bot = bot
 
 
@@ -329,6 +339,26 @@ bot17 = FakeBot()
 u17 = FakeUpdate(4040, own_photo_data=photo, caption="/stiker@testbot")
 asyncio.run(meme._caption_router(u17, FakeContext(conn, bot=bot17)))
 _t("caption /stiker@bot: create dipanggil", len(bot17.calls) == 1)
+
+# 18. /cekpack: lapor isi pack dari server (khusus admin)
+conn = db.init_db(":memory:")
+bot18 = FakeBot()
+u18 = FakeUpdate(1, own_photo_data=photo)  # id 1 = admin
+ctx18 = FakeContext(conn, bot=bot18, admin_id=1)
+asyncio.run(meme.stiker_cmd(u18, ctx18))
+u18.message.replies.clear()
+asyncio.run(meme.cekpack_cmd(u18, ctx18))
+_t("/cekpack: lapor 8 stiker dari server",
+   any("Isi di server: 8 stiker" in r for r in u18.message.replies))
+
+# 19. /cekpack: non-admin ditolak
+conn = db.init_db(":memory:")
+u19 = FakeUpdate(999, own_photo_data=photo)
+asyncio.run(meme.stiker_cmd(u19, FakeContext(conn, bot=FakeBot())))
+u19.message.replies.clear()
+asyncio.run(meme.cekpack_cmd(u19, FakeContext(conn, bot=FakeBot())))
+_t("/cekpack: non-admin ditolak",
+   any("Khusus admin" in r for r in u19.message.replies))
 
 print("MEME " + ("OK" if not fails else "GAGAL: %s" % fails))
 sys.exit(1 if fails else 0)
